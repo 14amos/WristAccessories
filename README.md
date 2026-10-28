@@ -8,7 +8,7 @@ Optional extra cosmetics are included if you also have this mod: [ISB Special Fo
 
 Thank you so so much to the amazing **Sam C-137** for allowing me to use some of their textures from the ISB Special Forces mod. (go download their mod!!!!)
 
-Client plugin for **SPT 4.1.6** (BepInEx). Wear watches, bracelets, chains, kill sleeves, rings, gloves and shoes from the
+Client plugin for **SPT 4.1.6** (BepInEx). Wear watches, bracelets, chains, kill sleeves, a skull ring, gloves and shoes from the
 game's outfits on **any** outfit, fitted to your sleeve, wrist and pants. You pick them on a new **WARDROBE** tab on the
 character screen.
 
