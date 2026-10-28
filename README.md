@@ -2,7 +2,7 @@
 
 **(WORK IN PROGRESS. MAINLY POSTING FOR FEEDBACK/SUGGESTIONS. MADE WITH THE HELP OF AI.)**
 
-adds a lot of customization to gloves/shoes/wrist accessories in the game. work in progress, you will very likely see clipping or gaps or invisible parts of your body (likely wrist and ankles with some bracelets/watches/shoes) theres quite a bit of customization even in its current state, im sure you could find something that works smoothly. anyways yeah just lmk if you have any issues, thanks for reading :)
+adds a new "WARDROBE" tab with a lot of customization to change gloves/shoes/wrist accessories in the game. work in progress, you will very likely see clipping or gaps or invisible parts of your body (likely wrist and ankles with some bracelets/watches/shoes) theres quite a bit of customization even in its current state, im sure you could find something that works smoothly. anyways yeah just lmk if you have any issues, thanks for reading :)
 
 Optional extra cosmetics are included if you also have this mod: [ISB Special Forces](https://sp-mod.com/mod/2485/isb-special-forces)
 
