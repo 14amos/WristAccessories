@@ -61,16 +61,16 @@ Hands from other outfits; the seam at the wrist before (top) and after the blend
 (The pictures after the WARDROBE tab are from the Unity test scene the item data is checked in.)
 
 ## Recommended mods
-- **WTT-ContentBackport** - adds WAY more customization: its outfits add many more watches, bracelets, hands, gloves and shoes
+- **[WTT-ContentBackport](https://sp-mod.com/mod/2512/wtt-content-backport)** - adds WAY more customization: its outfits add many more watches, bracelets, hands, gloves and shoes
   to the lists.
 - **[ISB Special Forces](https://sp-mod.com/mod/2485/isb-special-forces)** by Sam C-137 - extra bracelets, gloves, hands and shoes from its
   outfits (needs WTT-ContentBackport too).
-- **Manimal.WatchAnims** (Manimal's watch animations) - animations for checking your watch; WristAccessories picks the one that
+- **[Manimal's Watch Animations](https://sp-mod.com/mod/2745/manimals-watch-animations)** (Manimal.WatchAnims) - animations for checking your watch; WristAccessories picks the one that
   matches where your watch face sits (back or inside of the wrist).
 
 ## Requirements
 - SPT 4.1.6 (BepInEx comes with SPT).
-- Optional: **WTT-ContentBackport** - adds way more customization. Many watches, items, hands and shoes come from its outfits;
+- Optional: **[WTT-ContentBackport](https://sp-mod.com/mod/2512/wtt-content-backport)** - adds way more customization. Many watches, items, hands and shoes come from its outfits;
   they are only listed when it is installed.
 - Optional: **[ISB Special Forces](https://sp-mod.com/mod/2485/isb-special-forces)** (folder `ISB-Aishi`, with WTT-ContentBackport). The included `WristAccessories-ISB` folder adds items cut from its outfits
   (bracelets, gloves and hands, shoes); it only loads when both are installed.
