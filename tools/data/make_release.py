@@ -17,7 +17,7 @@ def main_mod(dst, friends):
     if friends:
         shutil.copy2(f"{W}/lab/feetscan/shoe_profiles_all.json", f"{M}/acc/shoe_profiles.json")
         shutil.copy2(f"{W}/lab/feetscan/skintones_all.json", f"{M}/acc/skintones.json")
-    for f in ("README.md", "LICENSE"):          # no changelog in releases (user 2026-10-27) shutil.copy2(f"{W}/{f}", dst)
+    for f in ("README.md", "LICENSE"): shutil.copy2(f"{W}/{f}", dst)          # no changelog in releases (user 2026-10-27)
 def addon(dst, src, readme=None):
     shutil.copytree(src, f"{dst}/BepInEx/plugins/{os.path.basename(src)}", ignore=ign)
     if readme: shutil.copy2(readme, f"{dst}/README.md")
