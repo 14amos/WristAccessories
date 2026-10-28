@@ -69,6 +69,8 @@ Unzip into your SPT folder (the one with `EscapeFromTarkov.exe`), so you get
 ## Uninstall
 Delete `BepInEx\plugins\WristAccessories` and `BepInEx\plugins\WristAccessories-ISB` (and `BepInEx\config\com.amos.wristaccessories.cfg` for your settings).
 
+Safe to remove: your profile doesn't depend on this mod. The only thing it saves to your profile is the outfit you pick with UPPER / LOWER (or a preset with clothing), exactly as the game's own clothing screen does, and always a suit you own.
+
 ## Compatibility
 - **Fika**: works, but other players don't see your accessories (nothing is synced).
 - **Manimal-WatchAnims** (optional): its "look at your watch" animation then matches where your picked watch sits on
