@@ -32,6 +32,15 @@ character screen.
 - Every setting is also in F12 (BepInEx Configuration Manager) -> WristAccessories.
 
 ## Pictures
+In game (first person):
+
+![Beads, gold ID chain and a kill sleeve](docs/images/ingame_beads_chain_sleeve.jpg)
+![A stack of wristbands](docs/images/ingame_wristbands.jpg)
+
+The WARDROBE tab:
+
+![WARDROBE tab](docs/images/wardrobe_tab.jpg)
+
 Every wrist item and watch in the release (each outfit's bracelets also come one by one):
 
 ![Wrist items and watches](docs/images/accessories.jpg)
@@ -49,7 +58,7 @@ Hands from other outfits; the seam at the wrist before (top) and after the blend
 ![Hands](docs/images/hands.jpg)
 ![Wrist seam](docs/images/seam.jpg)
 
-(Pictures are from the Unity test scene the item data is checked in, not in-game screenshots.)
+(The pictures after the WARDROBE tab are from the Unity test scene the item data is checked in.)
 
 ## Recommended mods
 - **WTT-ContentBackport** - adds WAY more customization: its outfits add many more watches, bracelets, hands, gloves and shoes
