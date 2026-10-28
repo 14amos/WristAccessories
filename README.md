@@ -9,6 +9,7 @@ game's outfits on **any** outfit, fitted to your sleeve, wrist and pants. You pi
 character screen.
 
 ## What it adds
+- Everything updates **live**: what you change on the WARDROBE tab shows on your character at once, in the hideout too - no restart, no raid needed.
 - **WARDROBE tab** next to the game's own character tabs, with a live preview of your character (drag to turn, scroll to zoom).
 - **LEFT 1-5 / RIGHT 1-5**: up to five items per forearm, from the wrist toward the elbow: bracelets, chains, the Prokill
   medallion chain, a dogtag on a chain, paracord, the Sacred Amulet, kill sleeves and pieces cut from other outfits.
@@ -45,6 +46,11 @@ Hands from other outfits; the seam at the wrist before (top) and after the blend
 ![Wrist seam](docs/images/seam.jpg)
 
 (Pictures are from the Unity test scene the item data is checked in, not in-game screenshots.)
+
+## Recommended mods
+- **WTT-ContentBackport** - its outfits add many more watches, bracelets, hands, gloves and shoes to the lists.
+- **Manimal.WatchAnims** (Manimal's watch animations) - animations for checking your watch; WristAccessories picks the one that
+  matches where your watch face sits (back or inside of the wrist).
 
 ## Requirements
 - SPT 4.1.6 (BepInEx comes with SPT).
