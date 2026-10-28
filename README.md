@@ -100,6 +100,7 @@ Every line from this mod starts with `[WristAccessories]` in `BepInEx\LogOutput.
   game's outfits, and testing in a Unity lab.
 - Items, watches, gloves and shoes come from Escape from Tarkov's own outfits (and WTT-ContentBackport's outfits when installed).
 - The ISB items come from Sam C-137's [ISB Special Forces](https://sp-mod.com/mod/2485/isb-special-forces) outfits. Thank you!
+- Shoutout to the GOAT Soap for being the GOAT and for being my most loyal tester and friend. thank you twin :aga:
 
 ## License
 MIT for the plugin code, see `LICENSE`. The item data (`acc/`, `watchshadow/`) is derived from Escape from Tarkov's and
