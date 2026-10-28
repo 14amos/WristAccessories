@@ -1,12 +1,8 @@
 # WristAccessories
 
-**(WORK IN PROGRESS. MAINLY POSTING FOR FEEDBACK/SUGGESTIONS. MADE WITH THE HELP OF AI.)**
-
-adds a lot of customization to gloves/shoes/wrist accessories in the game. work in progress, you will very likely see clipping or gaps or invisible parts of your body (likely wrist and ankles with some bracelets/watches/shoes) theres quite a bit of customization even in its current state, im sure you could find something that works smoothly. anyways yeah just lmk if you have any issues, thanks for reading :)
-
-Optional extra cosmetics are included if you also have this mod: [ISB Special Forces](https://sp-mod.com/mod/2485/isb-special-forces)
-
-Thank you so so much to the amazing **Sam C-137** for allowing me to use some of their textures from the ISB Special Forces mod. (go download their mod!!!!)
+> **Work in progress.** I'm releasing this mainly to get feedback, so don't expect a perfect experience: some items still clip,
+> float or look off on some outfits, and hands from other outfits can show a visible seam at the wrist. Reports (outfit + item +
+> a screenshot) are very welcome.
 
 Client plugin for **SPT 4.1.6** (BepInEx). Wear watches, bracelets, chains, kill sleeves, rings, gloves and shoes from the
 game's outfits on **any** outfit, fitted to your sleeve, wrist and pants. You pick them on a new **WARDROBE** tab on the
@@ -59,7 +55,7 @@ Hands from other outfits; the seam at the wrist before (top) and after the blend
 ## Requirements
 - SPT 4.1.6 (BepInEx comes with SPT).
 - Optional: **WTT-ContentBackport**. Some watches, items and shoes come from its outfits; they are only listed when it is installed.
-- Optional: **[ISB Special Forces](https://sp-mod.com/mod/2485/isb-special-forces)** (folder `ISB-Aishi`, with WTT-ContentBackport). The included `WristAccessories-ISB` folder adds items cut from its outfits
+- Optional: **ISB-Aishi** (with WTT-ContentBackport). The included `WristAccessories-ISB` folder adds items cut from its outfits
   (bracelets, gloves and hands, shoes); it only loads when both are installed.
 
 ## Install
@@ -82,7 +78,7 @@ Every line from this mod starts with `[WristAccessories]` in `BepInEx\LogOutput.
 - Built with Claude Code (Anthropic's Claude) as a coding assistant: code, the offline tools that cut the items from the
   game's outfits, and testing in a Unity lab.
 - Items, watches, gloves and shoes come from Escape from Tarkov's own outfits (and WTT-ContentBackport's outfits when installed).
-- The ISB items come from Sam C-137's [ISB Special Forces](https://sp-mod.com/mod/2485/isb-special-forces) outfits, used with their permission. Thank you!
+- The ISB items come from ISB-Aishi's outfits; all credit for them goes to their author.
 
 ## License
 MIT for the plugin code, see `LICENSE`. The item data (`acc/`, `watchshadow/`) is derived from Escape from Tarkov's and
