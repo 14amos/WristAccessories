@@ -10,7 +10,8 @@ namespace WristAccessories;
 // Presets (user 2026-10-27: "presets for wrist accessories and tattoos", picked: an own list on our tab, not the game's equipment
 // builds): a named snapshot of the WARDROBE tab's picks in BepInEx/config/com.amos.wristaccessories.presets.json. Loading sets the
 // same config entries the tab sets, so the arms are rebuilt the usual way (SettingChanged -> Reapply). What a load applies is the
-// setting "Preset loads": all, the wrist (items, watch, ring, their slides / turns) or the hands (other hands, gloves, tattoos).
+// setting "Preset loads": all, the wrist (items, watch, ring, their slides / turns), the hands (other hands, gloves, tattoos) or the
+// clothing (upper / lower suit you own, through the tab's picker = the game's own clothing change, saved when the screen closes).
 static class Presets
 {
     static string FilePath => Path.Combine(BepInEx.Paths.ConfigPath, "com.amos.wristaccessories.presets.json");
@@ -37,6 +38,8 @@ static class Presets
     {
         name = (name ?? "").Trim(); if (name.Length == 0) return;
         var o = Read(); var p = new JObject(); foreach (var e in All) p[Key(e)] = e.Value ?? "";
+        // the clothing (user 2026-10-27: "it didnt change my shirt"): the suits worn, by id - put back with the tab's own picker
+        p["Upper"] = AccessoriesTab.SuitOf(true); p["Lower"] = AccessoriesTab.SuitOf(false);
         o[name] = p; Write(o); Last = name;
         Plugin.Log.LogInfo($"[WristAccessories] presets: saved \"{name}\" ({string.Join(", ", All.Select(e => $"{Key(e)}={(e.Value ?? "").Length} chars"))})");
     }
@@ -44,8 +47,16 @@ static class Presets
     public static void Load(string name)
     {
         var o = Read(); if (!(o[name] is JObject p)) { Plugin.Log.LogWarning($"[WristAccessories] presets: no preset \"{name}\""); return; }
-        string mode = Plugin.PresetLoads.Value; var set = mode == "wrist" ? Wrist : mode == "hands" ? Hands : All; int n = 0;
+        string mode = Plugin.PresetLoads.Value; var set = mode == "wrist" ? Wrist : mode == "hands" ? Hands : mode == "clothing" ? new ConfigEntry<string>[0] : All; int n = 0;
         foreach (var e in set) if (p[Key(e)] != null) { var v = (string)p[Key(e)]; if (e.Value != v) { e.Value = v; n++; } }
+        if (mode == "all" || mode == "clothing")
+            foreach (var (k, up) in new[] { ("Upper", true), ("Lower", false) })
+            {
+                var id = (string)p[k];
+                if (string.IsNullOrEmpty(id) || id == AccessoriesTab.SuitOf(up)) continue;
+                if (!AccessoriesTab.IsSuit(id)) { Plugin.Log.LogWarning($"[WristAccessories] presets: \"{name}\" {k.ToLower()} {id} is not one of your suits - left as it is"); continue; }
+                AccessoriesTab.SetSuit(id); n++;
+            }
         Last = name;
         Plugin.Log.LogInfo($"[WristAccessories] presets: loaded \"{name}\" ({mode}): {n} settings changed");
     }

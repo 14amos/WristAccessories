@@ -79,8 +79,8 @@ static class AccessoriesTab
         l.Add(new Slot { Group = "T", Caption = "LOWER", Tip = "Your lower body clothing (the suits you own). Saved by the game when you close this screen, like its own clothing picker. Not in raid.", Choices = () => SuitChoices(false), Get = () => SuitOf(false), Set = v => SetSuit(v) });
         l.Add(new Slot { Group = "T", Caption = "SHOES", Tip = "Another outfit's shoes on your feet: they bend with your feet, your own shoes are tucked inside. Kept whatever LOWER you wear.", Choices = ShoeChoices, Get = () => HandWear.Items.ContainsKey(Plugin.Shoes.Value ?? "") ? Plugin.Shoes.Value : "", Set = v => Plugin.Shoes.Value = v });
         // presets (Presets.cs): load (all / wrist / hands, LOAD WHAT), save the current picks under a name, delete
-        l.Add(new Slot { Group = "O", Caption = "PRESET", Tip = "Load a saved preset: your wrist items, watch, ring, hands, tattoos and shoes as you saved them (LOAD WHAT picks which part).", Choices = () => new List<(string, string)> { ("Load a preset...", "") }.Concat(Presets.Names().Select(n => (n, n))).ToList(), Get = () => Presets.Last, Set = v => { if (!string.IsNullOrEmpty(v)) Presets.Load(v); } });
-        l.Add(new Slot { Group = "O", Caption = "LOAD WHAT", Tip = "What loading a preset puts on.", Choices = () => new List<(string, string)> { ("Everything", "all"), ("Wrist only (items, watch, ring)", "wrist"), ("Hands and tattoos only", "hands") }, Get = () => Plugin.PresetLoads.Value, Set = v => Plugin.PresetLoads.Value = v });
+        l.Add(new Slot { Group = "O", Caption = "PRESET", Tip = "Load a saved preset: your clothing, wrist items, watch, ring, hands, tattoos and shoes as you saved them (LOAD WHAT picks which part).", Choices = () => new List<(string, string)> { ("Load a preset...", "") }.Concat(Presets.Names().Select(n => (n, n))).ToList(), Get = () => Presets.Last, Set = v => { if (!string.IsNullOrEmpty(v)) Presets.Load(v); } });
+        l.Add(new Slot { Group = "O", Caption = "LOAD WHAT", Tip = "What loading a preset puts on.", Choices = () => new List<(string, string)> { ("Everything (with your clothing)", "all"), ("Wrist only (items, watch, ring)", "wrist"), ("Hands and tattoos only", "hands"), ("Clothing only (upper, lower)", "clothing") }, Get = () => Plugin.PresetLoads.Value, Set = v => Plugin.PresetLoads.Value = v });
         l.Add(new Slot { Group = "P", Caption = "SAVE AS", Tip = "Type a name, SAVE stores what you wear now (same name = replaced), DELETE removes the preset with that name." });
         l.Add(new Slot { Group = "S", Caption = "WATCH ON", Tip = "Which wrist the watch is on. BOTH puts the same watch on each wrist.", Choices = () => new List<(string, string)> { ("LEFT", "left"), ("RIGHT", "right"), ("BOTH", "both") }, Get = () => (Plugin.WatchWrist.Value ?? "left").ToLowerInvariant(), Set = v => Plugin.WatchWrist.Value = v });
         l.Add(new Slot { Group = "O", Caption = "WATCH FACE", Tip = "Where the watch face sits: on the back of the wrist, or on the inside like some outfits wear it.", Choices = () => new List<(string, string)> { ("Back of the wrist", "back"), ("Inner wrist", "inner") }, Get = () => Plugin.WatchFace.Value ?? "back", Set = v => Plugin.WatchFace.Value = v });
@@ -217,13 +217,13 @@ static class AccessoriesTab
         var l = Suits(upper).Select(x => (SuitName(x), x.Id.ToString())).OrderBy(x => x.Item1).ToList();
         return l.Count > 0 ? l : new List<(string, string)> { ("None owned", "") };
     }
-    static string SuitOf(bool upper)
+    internal static string SuitOf(bool upper)
     {
         if (_profile == null) return "";
         var cur = _profile.Customization[upper ? EFT.EBodyModelPart.Body : EFT.EBodyModelPart.Feet];
         return Suits(upper).FirstOrDefault(x => x.MainBodyPartItem == cur)?.Id.ToString() ?? "";
     }
-    static void SetSuit(string id)
+    internal static void SetSuit(string id)
     {
         if (string.IsNullOrEmpty(id) || _profile == null || _scr == null || EFT.InGameStatus.InRaid) return;
         var suit = Suits(true).Concat(Suits(false)).FirstOrDefault(x => x.Id.ToString() == id); if (suit == null) return;
