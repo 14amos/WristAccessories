@@ -24,7 +24,7 @@ namespace WristAccessories;
 // postfix there swaps in the accessory picked in F12. Fit on hands it wasn't made for: the accessory's placement is
 // taken relative to the wrist frame of the hands it ships with and re-applied to the worn hands' wrist frame
 // (wrist_frames.json, measured offline from every hands mesh in LForearm3 bone space), scaled by the wrist radius ratio.
-[BepInPlugin("com.amos.wristaccessories", "WristAccessories", "1.0.3")]
+[BepInPlugin("com.amos.wristaccessories", "WristAccessories", "1.0.4")]
 [BepInDependency("com.manimal.watchanims", BepInDependency.DependencyFlags.SoftDependency)]
 public class Plugin : BaseUnityPlugin
 {

@@ -29,8 +29,30 @@ static class AccessoriesTab
         if (show == null || close == null || TabsF == null || DictF == null)
         { Plugin.Log.LogWarning($"[WristAccessories] ACCESSORIES tab: game changed (Show {show != null}, CloseAction {close != null}, _tabs {TabsF != null}, _tabDictionary {DictF != null}) - picks in F12 only"); return; }
         h.Patch(show, postfix: new HarmonyMethod(typeof(AccessoriesTab), nameof(ShowPostfix)));
+        // our tab INTO the screen's tab dictionary before the game builds its TabGroup from it (1.0.4, user 2026-10-28: without
+        // Improved Customization UI a press on WARDROBE did nothing - the page never opened; added to the group afterwards it only
+        // worked when ICUI had rebuilt the dictionary). The game's own way a tab is part of the row
+        var show1 = AccessTools.Method(typeof(InventoryScreen), "Show", new[] { typeof(InventoryScreen.InventoryScreenController) });
+        if (show1 != null) h.Patch(show1, prefix: new HarmonyMethod(typeof(AccessoriesTab), nameof(ShowPrefix)));
+        else Plugin.Log.LogWarning("[WristAccessories] WARDROBE tab: InventoryScreen.Show(controller) not found - tab added to the row afterwards");
         h.Patch(close, prefix: new HarmonyMethod(typeof(AccessoriesTab), nameof(ClosePrefix)));
         Plugin.Log.LogInfo("[WristAccessories] ACCESSORIES tab hooked into the character screen");
+    }
+
+    internal const EInventoryTab WardrobeKey = (EInventoryTab)50;
+    static void ShowPrefix(InventoryScreen __instance)
+    {
+        try
+        {
+            var dict = (IReadOnlyDictionary<EInventoryTab, Tab>)DictF.GetValue(__instance); if (dict == null) return;
+            var host = __instance.GetComponent<Host>() ?? __instance.gameObject.AddComponent<Host>();
+            var tab = host.Ensure(__instance, dict); if (tab == null) return;
+            if (dict.TryGetValue(WardrobeKey, out var have) && have == tab) return;
+            var d = dict.Where(kv => kv.Key != WardrobeKey).ToDictionary(kv => kv.Key, kv => kv.Value); d[WardrobeKey] = tab;
+            DictF.SetValue(__instance, d);
+            Plugin.Log.LogInfo($"[WristAccessories] WARDROBE tab registered in the screen's tabs ({d.Count}: {string.Join(", ", d.Values.Select(t => t != null ? t.name : "null"))})");
+        }
+        catch (Exception e) { Plugin.Log.LogError("[WristAccessories] WARDROBE tab register: " + e); }
     }
 
     static void ShowPostfix(InventoryScreen __instance)
@@ -285,10 +307,18 @@ static class AccessoriesTab
             if (_viewer != null) _viewer.Profile = ProfileF?.GetValue(scr) as EFT.Profile;
             if (Tab == null) Build(scr, dict);
             if (Tab == null || group == null) return;
+            Plugin.Log.LogInfo($"[WristAccessories] WARDROBE tab in the game's tab group: {group._tabs.Contains(Tab)} ({group._tabs.Length} tabs)");
             if (_group != null && _group != group) Tab.OnSelectionChanged -= _group.SelectionChangedHandler;
             if (!group._tabs.Contains(Tab)) { group._tabs = group._tabs.Concat(new[] { Tab }).ToArray(); Tab.OnSelectionChanged += group.SelectionChangedHandler; }
             _group = group;
             Tab.Init(this); Tab.UpdateVisual(false); Hide(); Tab.gameObject.SetActive(true); Tab.SetInteractable(true); Arrange();
+        }
+
+        /// <summary>The tab, built on first use (the dictionary may already hold it - it is left out of the row we copy from).</summary>
+        public Tab Ensure(InventoryScreen scr, IReadOnlyDictionary<EInventoryTab, Tab> dict)
+        {
+            if (Tab == null) Build(scr, dict.Where(kv => kv.Key != WardrobeKey).ToDictionary(kv => kv.Key, kv => kv.Value));
+            return Tab;
         }
 
         // the row of tabs (the game's 8, other mods' - Improved Customization UI's CUSTOMIZATION tab - and ours) must stay on
@@ -296,47 +326,77 @@ static class AccessoriesTab
         // limit is the SCREEN's right edge (the root canvas corner): the tab bar's own rect is tiny (0.7.4 took its edge, x 12,
         // and squeezed every tab off to the left). Always from the tabs' original places; never tighter than 60 % of their
         // step - then the game's tabs stay where they are.
+        // 1.0.4 (user 2026-10-28, a player: WARDROBE "disappears after single press"): other mods add tabs AFTER ours is placed
+        // (Interface10's Character10 went in 4th and pushed PRESTIGE onto ours; the game then redraws the row back to front, ours
+        // first, so PRESTIGE covered it and took every press - diagnostic log). Now: ours goes after the RIGHT EDGE of the real last
+        // tab, the row is checked again whenever it changes (tabs added / moved by anyone), and ours is drawn last while it touches
+        // another tab. Squeezing (no room before BACK) is from each tab's last place set by someone else, never cumulative.
         readonly Dictionary<RectTransform, Vector3> _home = new Dictionary<RectTransform, Vector3>();
+        readonly Dictionary<RectTransform, Vector3> _mine = new Dictionary<RectTransform, Vector3>();   // where we last put a tab
+        string _rowSig;
+        string RowSig(RectTransform bar) => string.Join(";", Enumerable.Range(0, bar.childCount).Select(i => bar.GetChild(i)).Where(t => t != Tab.transform && t.gameObject.activeSelf && t.GetComponent<Tab>() != null)
+            .Select(t => t.name + "@" + Mathf.RoundToInt(((RectTransform)t).localPosition.x) + "/" + Mathf.RoundToInt(((RectTransform)t).rect.width)).OrderBy(x => x)) + "|" + bar.childCount;   // order-free: the game re-sorts the row on every pick
+        static float Left(RectTransform t) => t.localPosition.x + t.rect.xMin * t.localScale.x;
+        static float Right(RectTransform t) => t.localPosition.x + t.rect.xMax * t.localScale.x;
         void Arrange()
         {
             try
             {
                 var bar = Tab.transform.parent as RectTransform; if (bar == null) return;
                 var me = (RectTransform)Tab.transform;
-                var tabs = bar.GetComponentsInChildren<Tab>(false).Where(t => t.transform.parent == bar && t != Tab).Select(t => (RectTransform)t.transform).ToList();
-                foreach (var t in tabs) if (!_home.ContainsKey(t)) _home[t] = t.localPosition;
-                foreach (var t in tabs) t.localPosition = _home[t];                         // back where the game (and other mods) put them
+                var tabs = Enumerable.Range(0, bar.childCount).Select(i => bar.GetChild(i)).Where(t => t != me && t.gameObject.activeSelf && t.GetComponent<Tab>() != null).Select(t => (RectTransform)t).ToList();
+                // a tab's own place = where the game / another mod last put it (not where we squeezed it to)
+                foreach (var t in tabs) if (!_mine.TryGetValue(t, out var m) || (t.localPosition - m).sqrMagnitude > 0.25f) _home[t] = t.localPosition;
+                foreach (var t in tabs) t.localPosition = _home[t];
                 tabs = tabs.OrderBy(t => t.localPosition.x).ToList();
-                if (tabs.Count < 2) return;
-                var last = tabs[tabs.Count - 1]; float step = last.localPosition.x - tabs[tabs.Count - 2].localPosition.x;
-                me.localPosition = new Vector3(last.localPosition.x + step, last.localPosition.y, last.localPosition.z);
-                var canvas = bar.GetComponentInParent<Canvas>()?.rootCanvas; if (canvas == null) return;
-                var c = new Vector3[4]; ((RectTransform)canvas.transform).GetWorldCorners(c);
-                // 0.7.5 put ours past the last tab, inside the screen (ends 1755 of 1910) - and nobody saw it: past the row the bar is not
-                // drawn / clipped. So the row's own span is the limit: ten tabs where the nine were (or the screen edge, if nearer)
-                float screen = bar.InverseTransformPoint(c[2]).x, x0 = tabs[0].localPosition.x;
-                float rowEnd = last.localPosition.x + last.rect.xMax * last.localScale.x;
+                if (tabs.Count < 1) return;
+                // the gap between neighbours (right edge to next left edge), as the row has it
+                var gaps = new List<float>(); for (int i = 1; i < tabs.Count; i++) gaps.Add(Left(tabs[i]) - Right(tabs[i - 1]));
+                float gap = gaps.Count > 0 ? Mathf.Clamp(gaps.OrderBy(g => g).ElementAt(gaps.Count / 2), 0f, 40f) : 4f;
+                float lastRight = tabs.Max(Right);
+                me.localPosition = new Vector3(lastRight + gap - me.rect.xMin * me.localScale.x, tabs[tabs.Count - 1].localPosition.y, tabs[tabs.Count - 1].localPosition.z);
+                var canvas = bar.GetComponentInParent<Canvas>()?.rootCanvas;
+                float screen = float.MaxValue;
+                if (canvas != null) { var c = new Vector3[4]; ((RectTransform)canvas.transform).GetWorldCorners(c); screen = bar.InverseTransformPoint(c[2]).x; }
                 float back = float.MaxValue;
-                if (_scr != null && _scr._backButton != null)
-                {
-                    var bc = new Vector3[4]; ((RectTransform)_scr._backButton.transform).GetWorldCorners(bc);
-                    back = bar.InverseTransformPoint(bc[0]).x - 8f;                            // its left edge, a little room
-                }
-                float right = Math.Min(screen, back);
-                float endNow = me.localPosition.x + me.rect.xMax * me.localScale.x;
+                if (_scr != null && _scr._backButton != null) { var bc = new Vector3[4]; ((RectTransform)_scr._backButton.transform).GetWorldCorners(bc); back = bar.InverseTransformPoint(bc[0]).x - 8f; }
+                float right = Math.Min(screen, back), x0 = Left(tabs[0]);
                 Diag(me, bar);
-                if (endNow <= right - 4f) { Plugin.Log.LogInfo($"[WristAccessories] ACCESSORIES tab fits: {tabs.Count + 1} tabs, step {step:0}, ends at {endNow:0}, BACK starts {back:0}, screen edge {screen:0}"); return; }
-                float ns = (right - 4f - me.rect.xMax * me.localScale.x - x0) / tabs.Count;   // ours is index tabs.Count
-                if (!(ns >= 0.6f * step) || step <= 0)
+                if (Right(me) <= right - 4f)
+                    Plugin.Log.LogInfo($"[WristAccessories] WARDROBE tab after {tabs[tabs.Count - 1].name}: {tabs.Count + 1} tabs, gap {gap:0}, ends at {Right(me):0}, BACK starts {back:0}; row: {string.Join(", ", tabs.Select(t => t.name))}");
+                else
                 {
-                    Plugin.Log.LogWarning($"[WristAccessories] ACCESSORIES tab: no room (step {step:0} would have to be {ns:0}, screen edge {right:0}, first tab {x0:0}) - left last, game tabs unchanged");
-                    return;
+                    // no room: every tab narrower steps, keeping their widths (left edges spread evenly from the first to where ours ends at right)
+                    float total = tabs.Sum(t => Right(t) - Left(t)) + (Right(me) - Left(me)), avail = right - 4f - x0, g2 = (avail - total) / tabs.Count;
+                    if (g2 < -0.35f * tabs.Average(t => Right(t) - Left(t)))
+                        Plugin.Log.LogWarning($"[WristAccessories] WARDROBE tab: no room before BACK ({tabs.Count + 1} tabs, {total:0} wide in {avail:0}) - left last, other tabs unchanged");
+                    else
+                    {
+                        float x = x0;
+                        foreach (var t in tabs) { var lp = t.localPosition; t.localPosition = new Vector3(x - t.rect.xMin * t.localScale.x, lp.y, lp.z); _mine[t] = t.localPosition; x = Right(t) + g2; }
+                        me.localPosition = new Vector3(x - me.rect.xMin * me.localScale.x, me.localPosition.y, me.localPosition.z);
+                        Plugin.Log.LogInfo($"[WristAccessories] WARDROBE tab: row of {tabs.Count + 1} squeezed to clear BACK, gap {gap:0} -> {g2:0}, ends at {Right(me):0} (BACK starts {back:0}); row: {string.Join(", ", tabs.Select(t => t.name))}");
+                    }
                 }
-                for (int i = 0; i < tabs.Count; i++) { var lp = _home[tabs[i]]; tabs[i].localPosition = new Vector3(x0 + i * ns, lp.y, lp.z); }
-                me.localPosition = new Vector3(x0 + tabs.Count * ns, me.localPosition.y, me.localPosition.z);
-                Plugin.Log.LogInfo($"[WristAccessories] ACCESSORIES tab: row of {tabs.Count + 1} tabs re-spaced to clear BACK, step {step:0} -> {ns:0}, ends at {right - 4f:0} (BACK starts {back:0}, screen edge {screen:0}); tabs: {string.Join(", ", tabs.Select(t => t.name))}");
+                _rowSig = RowSig(bar);
             }
-            catch (Exception e) { Plugin.Log.LogError("[WristAccessories] ACCESSORIES tab arrange: " + e.Message); }
+            catch (Exception e) { Plugin.Log.LogError("[WristAccessories] WARDROBE tab arrange: " + e.Message); }
+        }
+        // every frame (cheap): the row changed (a mod added or moved a tab) -> place ours again; touching another tab -> drawn last
+        void KeepPlace()
+        {
+            if (Tab == null || !Tab.gameObject.activeInHierarchy) return;
+            var bar = Tab.transform.parent as RectTransform; if (bar == null) return;
+            if (RowSig(bar) != _rowSig) { Plugin.Log.LogInfo("[WristAccessories] WARDROBE tab: the tab row changed - placed again"); Arrange(); }
+            var me = (RectTransform)Tab.transform;
+            if (me.GetSiblingIndex() == bar.childCount - 1) return;
+            float l = Left(me), r = Right(me);
+            for (int i = me.GetSiblingIndex() + 1; i < bar.childCount; i++)
+            {
+                var o = bar.GetChild(i) as RectTransform;
+                if (o == null || !o.gameObject.activeSelf || o.GetComponent<Tab>() == null) continue;
+                if (Right(o) > l + 1f && Left(o) < r - 1f) { me.SetAsLastSibling(); return; }
+            }
         }
 
         // what could hide our tab: clipping masks above it, inactive / transparent pieces, where it is on the screen
@@ -771,8 +831,32 @@ static class AccessoriesTab
 
         // the game switches our tab off after we make it (0.7.6 diag: "active False", the screen's own pass over its tabs):
         // while the game's tabs are up, ours is too
+        // 1.0.4 test (user 2026-10-28: WARDROBE "disappears after single press" without ICUI): what is under the pointer when it is
+        // pressed on our tab, and every change of our tab's place / state, so one run shows what takes the click
+        int _sibSeen = -1; bool _actSeen, _selSeen; Transform _parentSeen;
+        void Watch()
+        {
+            if (Tab == null) return;
+            var tr = Tab.transform; int sib = tr.GetSiblingIndex(); bool act = Tab.gameObject.activeInHierarchy, sel = Tab._selectedVersion != null && Tab._selectedVersion.activeSelf;
+            if (sib != _sibSeen || act != _actSeen || sel != _selSeen || tr.parent != _parentSeen)
+            {
+                Plugin.Log.LogInfo($"[WristAccessories] WARDROBE tab watch (frame {Time.frameCount}): sibling {sib}/{(tr.parent != null ? tr.parent.childCount : 0)} under {(tr.parent != null ? tr.parent.name : "-")}, active {act}, selected {sel}, row: {(tr.parent != null ? string.Join(", ", Enumerable.Range(0, tr.parent.childCount).Select(i => tr.parent.GetChild(i).name + (tr.parent.GetChild(i).gameObject.activeSelf ? "" : "(off)"))) : "")}");
+                _sibSeen = sib; _actSeen = act; _selSeen = sel; _parentSeen = tr.parent;
+            }
+            if (!Input.GetMouseButtonDown(0) || UnityEngine.EventSystems.EventSystem.current == null) return;
+            var rt = (RectTransform)tr; var cam = rt.GetComponentInParent<Canvas>()?.rootCanvas?.worldCamera;
+            var c = new Vector3[4]; rt.GetWorldCorners(c);
+            Vector2 a = RectTransformUtility.WorldToScreenPoint(cam, c[0]), b = RectTransformUtility.WorldToScreenPoint(cam, c[2]); var m = (Vector2)Input.mousePosition;
+            if (m.x < a.x - 40 || m.x > b.x + 40 || m.y < a.y - 30 || m.y > b.y + 30) return;
+            var hits = new List<UnityEngine.EventSystems.RaycastResult>();
+            UnityEngine.EventSystems.EventSystem.current.RaycastAll(new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current) { position = m }, hits);
+            string P(Transform t) { var q = t.name; for (int k = 0; k < 3 && t.parent != null; k++) { t = t.parent; q = t.name + "/" + q; } return q; }
+            Plugin.Log.LogInfo($"[WristAccessories] WARDROBE press at {m.x:0},{m.y:0} (our tab {a.x:0},{a.y:0}..{b.x:0},{b.y:0}, interactable {Tab.Interactable}): top hits {string.Join(" | ", hits.Take(6).Select(h => P(h.gameObject.transform)))}");
+        }
+
         void LateUpdate()
         {
+            try { Watch(); KeepPlace(); } catch (Exception e) { Plugin.Log.LogError("[WristAccessories] WARDROBE watch: " + e.Message); }
             if (Tab == null || Tab.gameObject.activeSelf) return;
             var bar = Tab.transform.parent; if (bar == null || !bar.gameObject.activeInHierarchy) return;
             Tab.gameObject.SetActive(true);

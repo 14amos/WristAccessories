@@ -4,8 +4,6 @@
 
 adds a new "WARDROBE" tab with a lot of customization to change gloves/shoes/wrist accessories in the game. work in progress, you will very likely see clipping or gaps or invisible parts of your body (likely wrist and ankles with some bracelets/watches/shoes) theres quite a bit of customization even in its current state, im sure you could find something that works smoothly. anyways yeah just lmk if you have any issues, thanks for reading :)
 
-**Requires [Hj's Improved Customization UI](https://sp-mod.com/mod/3069/hjs-improved-customization-ui) for now** - without it the WARDROBE tab doesn't show up (fix coming).
-
 Optional extra cosmetics are included if you also have this mod: [ISB Special Forces](https://sp-mod.com/mod/2485/isb-special-forces)
 
 Thank you so so much to the amazing **Sam C-137** for allowing me to use some of their textures from the ISB Special Forces mod. (go download their mod!!!!)
@@ -72,8 +70,6 @@ Hands from other outfits; the seam at the wrist before (top) and after the blend
 
 ## Requirements
 - SPT 4.1.6 (BepInEx comes with SPT).
-- **REQUIRED for now: [Hj's Improved Customization UI](https://sp-mod.com/mod/3069/hjs-improved-customization-ui)** - without it the WARDROBE tab doesn't show up on the character
-  screen. A fix is on the way so it won't be needed.
 - Optional: **[WTT-ContentBackport](https://sp-mod.com/mod/2512/wtt-content-backport)** - adds way more customization. Many watches, items, hands and shoes come from its outfits;
   they are only listed when it is installed.
 - Optional: **[ISB Special Forces](https://sp-mod.com/mod/2485/isb-special-forces)** (folder `ISB-Aishi`, with WTT-ContentBackport). The included `WristAccessories-ISB` folder adds items cut from its outfits
