@@ -67,6 +67,8 @@ Hands from other outfits; the seam at the wrist before (top) and after the blend
   outfits (needs WTT-ContentBackport too).
 - **[Manimal's Watch Animations](https://sp-mod.com/mod/2745/manimals-watch-animations)** (Manimal.WatchAnims) - animations for checking your watch; WristAccessories picks the one that
   matches where your watch face sits (back or inside of the wrist).
+- **[Hj's Improved Customization UI](https://sp-mod.com/mod/3069/hjs-improved-customization-ui)** - a better clothing / customization
+  screen; works side by side with the WARDROBE tab.
 
 ## Requirements
 - SPT 4.1.6 (BepInEx comes with SPT).
