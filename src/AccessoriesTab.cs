@@ -1002,6 +1002,16 @@ static class AccessoriesTab
         }
     }
 
+    // the viewer's lights burn only between this camera's cull and its last draw, so no other camera ever sees them
+    class StageLights : MonoBehaviour
+    {
+        public Light[] Lights;
+        void OnPreCull() { Set(true); }
+        void OnPostRender() { Set(false); }
+        void OnDisable() { Set(false); }
+        void Set(bool on) { if (Lights != null) foreach (var l in Lights) if (l != null) l.enabled = on; }
+    }
+
     // your character on a stage of its own (far from every other camera), loaded by the game's PlayerModelLoader like the
     // character screen's model (so our preview fitting puts the accessories on it and refits on every pick), seen by our own
     // camera into a texture: aimed at the wrist, drag to turn round the forearm, scroll to zoom. Lights light only that layer.
@@ -1033,14 +1043,19 @@ static class AccessoriesTab
                 Plugin.Log.LogInfo($"[WristAccessories] viewer: picture {rw}x{rh} for a {box.x:0}x{box.y:0} box");
                 _cam.targetTexture = _rt; _cam.cullingMask = 1 << layer; _cam.clearFlags = CameraClearFlags.SolidColor; _cam.backgroundColor = new Color(0.045f, 0.05f, 0.053f, 1f);
                 _cam.fieldOfView = 30f; _cam.nearClipPlane = 0.01f; _cam.farClipPlane = 20f;
+                // EFT renders deferred, which does not keep a light to its culling mask: lit in raids (reports 2026-10-28)
+                var lights = new List<Light>();
                 foreach (var (rot, intensity) in new[] { (new Vector3(35, 150, 0), 1.1f), (new Vector3(10, -40, 0), 0.45f), (new Vector3(-30, 60, 0), 0.25f) })
                 {
                     var l = new GameObject("Light").AddComponent<Light>(); l.transform.SetParent(_stage.transform, false); l.transform.rotation = Quaternion.Euler(rot);
                     l.type = LightType.Directional; l.intensity = intensity; l.cullingMask = 1 << layer; l.color = new Color(1f, 0.97f, 0.92f); l.shadows = LightShadows.None;
+                    l.enabled = false; lights.Add(l);
                 }
+                cgo.AddComponent<StageLights>().Lights = lights.ToArray();
                 GetComponent<RawImage>().texture = _rt;
             }
-            _cam.enabled = true;
+            _stage.SetActive(true); _cam.enabled = true;
+            Plugin.Log.LogInfo("[WristAccessories] viewer: stage on (lights only while the viewer camera draws)");
             if (_loader == null && !_loading) _ = Load();
         }
 
@@ -1065,6 +1080,7 @@ static class AccessoriesTab
             try { _cts?.Cancel(); } catch { }
             _cts = null; if (_loader != null) { _loader.Clear(); _loader = null; Plugin.Log.LogInfo("[WristAccessories] viewer: character released"); }
             _f3 = _palm = null; if (_cam != null) _cam.enabled = false;
+            if (_stage != null && _stage.activeSelf) { _stage.SetActive(false); Plugin.Log.LogInfo("[WristAccessories] viewer: stage off"); }
         }
 
         // the body's middle and height (its renderers' bounds), kept in the body's own space so the idle animation does not drift it
