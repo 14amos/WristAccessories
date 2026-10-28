@@ -4,7 +4,7 @@
 #                                          anything. The ISB folder still skips itself when ISB-Aishi is not installed.
 #   WristAccessories-<v>-friends.zip       PRIVATE (user's friends only): main mod with the Artem data (arm outlines, pants data,
 #                                          skin tone) + ISB addon + Artem addon (from BACKUPS/wristacc-artem-removed-2026-10-27)
-# Layout as installed (BepInEx/plugins/...), README.md / CHANGELOG.md / LICENSE at the zip root; *.bak* files never go in.
+# Layout as installed (BepInEx/plugins/...), README.md / LICENSE at the zip root; *.bak* files never go in.
 import os, sys, shutil, zipfile, hashlib
 V = sys.argv[1]; W = "WORK/wristacc"; R = f"OUT/release-wristacc-{V}"; S = R + "/stage"
 ARTEM = "BACKUPS/wristacc-artem-removed-2026-10-27/source/WristAccessories-Artem"
@@ -17,7 +17,7 @@ def main_mod(dst, friends):
     if friends:
         shutil.copy2(f"{W}/lab/feetscan/shoe_profiles_all.json", f"{M}/acc/shoe_profiles.json")
         shutil.copy2(f"{W}/lab/feetscan/skintones_all.json", f"{M}/acc/skintones.json")
-    for f in ("README.md", "CHANGELOG.md", "LICENSE"): shutil.copy2(f"{W}/{f}", dst)
+    for f in ("README.md", "LICENSE"):          # no changelog in releases (user 2026-10-27) shutil.copy2(f"{W}/{f}", dst)
 def addon(dst, src, readme=None):
     shutil.copytree(src, f"{dst}/BepInEx/plugins/{os.path.basename(src)}", ignore=ign)
     if readme: shutil.copy2(readme, f"{dst}/README.md")
