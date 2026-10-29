@@ -20,6 +20,7 @@ static class WatchAnimsCompat
 {
     const string Guid = "com.manimal.watchanims";
     static MethodInfo _handler;
+    static FieldInfo _resetTarget;
 
     public static void TryPatch(Harmony h)
     {
@@ -31,7 +32,28 @@ static class WatchAnimsCompat
         if (pick != null) h.Patch(pick, prefix: new HarmonyMethod(typeof(WatchAnimsCompat), nameof(GetAnimIndexPrefix)));
         var hideout = AccessTools.Method(typeof(EFT.InputSystem.InputNodeAbstract), nameof(EFT.InputSystem.InputNodeAbstract.TranslateInput));
         if (_handler != null && hideout != null) h.Patch(hideout, prefix: new HarmonyMethod(typeof(WatchAnimsCompat), nameof(TranslateInputPrefix)));
+        // (3) His PwaResetPatch turns the weapon root back to straight every frame from the first watch check on and never stops
+        // (its _target is never cleared), which wipes stance mods' rotations (Fontaine Stance Overhaul low/high ready, patrol)
+        // for the rest of the raid. We clear his target when his clip coroutine (DriveAndRestore) has finished.
+        var reset = t?.Assembly.GetType("Manimal.WatchAnims.PwaResetPatch");
+        _resetTarget = reset != null ? AccessTools.Field(reset, "_target") : null;
+        var drive = t != null ? AccessTools.Method(t, "DriveAndRestore") : null;
+        var driveNext = drive != null ? AccessTools.EnumeratorMoveNext(drive) : null;
+        if (_resetTarget != null && driveNext != null) h.Patch(driveNext, postfix: new HarmonyMethod(typeof(WatchAnimsCompat), nameof(DriveMoveNextPostfix)));
+        Plugin.Log.LogInfo($"[WristAccessories] Manimal-WatchAnims stance fix: {(_resetTarget != null && driveNext != null ? "hooked (weapon straightening ends with the watch clip)" : $"NOT hooked (target field {_resetTarget != null}, clip coroutine {driveNext != null})")}");
         Plugin.Log.LogInfo($"[WristAccessories] Manimal-WatchAnims {info.Metadata.Version}: clip pick {(pick != null ? "hooked" : "NOT FOUND")}, hideout keys {(_handler != null && hideout != null ? "hooked" : "NOT FOUND")}");
+    }
+
+    static void DriveMoveNextPostfix(bool __result)
+    {
+        if (__result || _resetTarget == null) return;
+        try
+        {
+            if (_resetTarget.GetValue(null) == null) return;
+            _resetTarget.SetValue(null, null);
+            Plugin.Log.LogInfo("[WristAccessories] watch animation done: Manimal's weapon straightening switched off (stances work again)");
+        }
+        catch (Exception e) { Plugin.Log.LogError("[WristAccessories] Manimal-WatchAnims stance fix: " + e.Message); }
     }
 
     static bool GetAnimIndexPrefix(Player player, ref int __result)

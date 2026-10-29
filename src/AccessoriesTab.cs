@@ -1075,12 +1075,19 @@ static class AccessoriesTab
             finally { _loading = false; }
         }
 
-        public void Release()
+        public void Release() => Release("tab closed");
+
+        void Release(string why)
         {
             try { _cts?.Cancel(); } catch { }
             _cts = null; if (_loader != null) { _loader.Clear(); _loader = null; Plugin.Log.LogInfo("[WristAccessories] viewer: character released"); }
             _f3 = _palm = null; if (_cam != null) _cam.enabled = false;
-            if (_stage != null && _stage.activeSelf) { _stage.SetActive(false); Plugin.Log.LogInfo("[WristAccessories] viewer: stage off"); }
+            if (_stage != null && _stage.activeSelf)
+            {
+                _stage.SetActive(false);
+                int on = _stage.GetComponentsInChildren<Light>(true).Count(l => l != null && l.enabled);
+                Plugin.Log.LogInfo($"[WristAccessories] viewer: stage off ({why}), camera {(_cam != null && _cam.enabled ? "STILL ON" : "off")}, lights left switched on: {on}");
+            }
         }
 
         // the body's middle and height (its renderers' bounds), kept in the body's own space so the idle animation does not drift it
@@ -1130,9 +1137,13 @@ static class AccessoriesTab
             if (Mode == "body") _bodyZoom = Mathf.Clamp(_bodyZoom * f, 0.35f, 1.6f); else _wristDist = Mathf.Clamp(_wristDist * f, 0.15f, 1.2f);
         }
 
+        // the game can hide or destroy the inventory screen without our tab being told (raid start, death, scripted screen changes):
+        // the stage is DontDestroyOnLoad, so the viewer switches it off itself as soon as its picture goes away
+        void OnDisable() { if (_stage != null && _stage.activeSelf) Release("picture hidden by the game"); }
+
         void OnDestroy()
         {
-            Release();
+            Release("destroyed");
             if (_stage != null) Destroy(_stage);
             if (_rt != null) { _rt.Release(); Destroy(_rt); }
         }
