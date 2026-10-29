@@ -104,13 +104,14 @@ def build(name, meshes, curve, kinds, out_scale=1.0, closed=None, bundle="", not
                 Fa = (curve.T[ia], curve.N[ia], curve.B[ia])
             else:
                 # pendant frame: its own thinnest axis -> outward, anchor -> centre direction -> toward the hand
-                Q = m["P"][sel]; c0 = Q.mean(0); _, _, vt = np.linalg.svd(Q - c0, full_matrices=False); pn = vt[2]
+                # a pendant spanning several meshes (charm + a bail from another item) gets ONE frame from all its parts
+                Q = allP[allpid == p] if (allpid == p).sum() > sel.sum() else m["P"][sel]; c0 = Q.mean(0); _, _, vt = np.linalg.svd(Q - c0, full_matrices=False); pn = vt[2]
                 if pn @ curve.N[ia] < 0: pn = -pn
                 pd = c0 - curve.p[ia]; pd -= pn * (pd @ pn)
                 pd = pd / np.linalg.norm(pd) if np.linalg.norm(pd) > 1e-6 else vt[0]
                 px = np.cross(pn, pd)                                 # (px, pn, pd) right-handed like (T, N, B)
                 top = Q[np.argmin(np.linalg.norm(Q - curve.p[ia], axis=1))]   # hangs from its own nearest point
-                q = Q - top
+                q = m["P"][sel] - top
                 rec["dt"][sel] = q @ px; rec["r"][sel] = q @ pn; rec["h"][sel] = q @ pd
                 Fa = (px, pn, pd)
             rec["n"][sel] = np.c_[m["N"][sel] @ Fa[0], m["N"][sel] @ Fa[1], m["N"][sel] @ Fa[2]]

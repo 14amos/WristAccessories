@@ -59,15 +59,39 @@ static class WatchAnimsCompat
     static bool GetAnimIndexPrefix(Player player, ref int __result)
     {
         var face = WristRig.MainWatchFace;
-        if (player == null || !player.IsYourPlayer || face == null)
+        if (player == null || !player.IsYourPlayer) return true;
+        float deg; string what;
+        if (face != null) { deg = Mathf.DeltaAngle(0f, face.Value * Mathf.Rad2Deg); what = WristRig.MainWatchName; }
+        else
         {
-            Plugin.Log.LogInfo("[WristAccessories] watch animation: no fitted watch on the left wrist -> Manimal's own pick (by suit)");
-            return true;
+            // no fitted watch: the outfit's own watch, on the side that outfit really wears it (user 2026-10-29; measured offline for
+            // 124 outfits by tattoo/acc/watch_sides.py -> acc/watch_sides.json, hands id -> degrees from the back of the hand)
+            string hid = player.PlayerBody != null && player.PlayerBody.BodyCustomization != null && player.PlayerBody.BodyCustomization.TryGetValue(EBodyModelPart.Hands, out var id) ? id.ToString() : "";
+            if (!Sides().TryGetValue(hid, out deg))
+            {
+                Plugin.Log.LogInfo($"[WristAccessories] watch animation: no fitted watch, outfit {hid} not measured -> Manimal's own pick (by suit)");
+                return true;
+            }
+            what = "the outfit's own watch (" + hid + ")";
         }
-        float deg = Mathf.DeltaAngle(0f, face.Value * Mathf.Rad2Deg);
         __result = Mathf.Abs(deg) < 90f ? 1 : 0;
-        Plugin.Log.LogInfo($"[WristAccessories] watch animation: {WristRig.MainWatchName} faces {deg:0} deg from the back of the hand -> {(__result == 1 ? "watch_usec (back of the wrist)" : "watch_bear (inside of the wrist)")}");
+        Plugin.Log.LogInfo($"[WristAccessories] watch animation: {what} faces {deg:0} deg from the back of the hand -> {(__result == 1 ? "watch_usec (back of the wrist)" : "watch_bear (inside of the wrist)")}");
         return false;
+    }
+
+    static Dictionary<string, float> _sides;
+    static Dictionary<string, float> Sides()
+    {
+        if (_sides != null) return _sides;
+        _sides = new Dictionary<string, float>();
+        try
+        {
+            var f = System.IO.Path.Combine(WristFit.Dir ?? "", "acc", "watch_sides.json");
+            if (System.IO.File.Exists(f)) foreach (var p in Newtonsoft.Json.Linq.JObject.Parse(System.IO.File.ReadAllText(f)).Properties()) _sides[p.Name] = (float)p.Value;
+            Plugin.Log.LogInfo($"[WristAccessories] watch animation: own-watch sides of {_sides.Count} outfits ({f})");
+        }
+        catch (Exception e) { Plugin.Log.LogError("[WristAccessories] watch_sides.json: " + e.Message); }
+        return _sides;
     }
 
     static int _firedFrame = -1, _diagPresses;

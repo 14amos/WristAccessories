@@ -61,7 +61,7 @@ static partial class HandWear
             {
                 var j = JObject.Parse(File.ReadAllText(f)); var it = new Item { name = (string)j["name"], note = (string)j["note"], kind = (string)j["kind"], side = (string)j["side"], bundle = BundleKey((string)j["bundle"]), mesh = (string)j["mesh"], dir = accDir, n = (int)j["n"] };
                 it.fit = (int?)j["fit"] ?? 0; it.rare = (bool?)j["rare"] ?? false;
-                it.noTone = (bool?)j["no_tone"] ?? false; it.press = (bool?)j["press"] ?? false;      // a fabric glove the skin test can't tell from skin: its colours stay
+                it.noTone = (bool?)j["no_tone"] ?? false; it.press = ((bool?)j["press"] ?? false) || it.kind == "tattoo";   // every tattoo pressed onto the hand / arm actually drawn (1.0.5)      // a fabric glove the skin test can't tell from skin: its colours stay
                 if (j["seam_d0"] is JArray sd && sd.Count == 12) it.seamD0 = sd.Select(x => (float)x).ToArray();
                 if (j["skin"] is JArray sk && sk.Count == 3) it.skin = new Color((float)sk[0], (float)sk[1], (float)sk[2]);
                 it.bones = j["bones"].ToObject<string[]>();
@@ -133,7 +133,8 @@ static partial class HandWear
                     catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] seam ({who}) {hi.name}: {e}"); }
                 }
         foreach (var side in picked.Where(i => i.kind == "hand").Select(i => i.side).Distinct()) foreach (var r in all) if (!(r == smr && seams.ContainsKey(side))) CutHand(r, side, swaps, who);
-        foreach (var it in picked)
+        var built = new Dictionary<string, SkinnedMeshRenderer>();          // side -> the swapped hand drawn there (tattoos press onto it)
+        foreach (var it in picked.OrderBy(i => i.kind == "tattoo" ? 1 : 0))   // hands first, tattoos after
         {
             try
             {
@@ -148,7 +149,15 @@ static partial class HandWear
                 if (it.kind == "tattoo" && it.press)
                 {
                     pos = (Vector3[])it.pos.Clone();
-                    try { subTris = PressInk(it, pos, smr, who) ?? subTris; } catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] tattoos ({who}) press {it.name}: {e}"); pos = it.pos; }
+                    // the renderer that really carries this tattoo's bones (1.1.0, user 2026-10-28: in the WARDROBE preview the biggest renderer had
+                    // none of them - "16 bones not in your hands", nothing pressed, so TATTOO SIZE seemed to do nothing)
+                    var pr = all.Where(x => x.gameObject.activeInHierarchy).OrderByDescending(x => it.bones.Count(n => x.bones.Any(b => b != null && b.name == n))).ThenByDescending(x => x.sharedMesh.vertexCount).FirstOrDefault() ?? smr;
+                    int[][] pressed = null;
+                    try { pressed = PressInk(it, pos, pr, built.TryGetValue(it.side, out var hp) ? hp : null, who, swaps.FirstOrDefault(x => x.r == pr && x.bones != null)?.bones); } catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] tattoos ({who}) press {it.name}: {e}"); pos = it.pos; }
+                    // not pressed on a third-person body (user shot 2026-10-28, pre-raid screen: the arm tattoo's whole shell drawn over the
+                    // parka sleeve as purple streaks): the unpressed shell is the source outfit's arm, not this body's - left out there
+                    if (pressed == null && who != "first person") { Plugin.Log.LogWarning($"[WristAccessories] tattoos ({who}): {it.name} could not be pressed onto this body - not drawn here"); continue; }
+                    subTris = pressed ?? subTris;
                 }
                 mesh.vertices = pos; mesh.normals = it.nrm; mesh.tangents = it.tan; mesh.uv = it.uv; mesh.boneWeights = it.bw; mesh.bindposes = it.bind;
                 mesh.subMeshCount = it.subs.Count; for (int s = 0; s < it.subs.Count; s++) mesh.SetTriangles(subTris[s], s);
@@ -172,7 +181,7 @@ static partial class HandWear
                     }).ToArray();
                 }
                 r.sharedMaterials = Fallback.Fix(r.sharedMaterials, it.subs.Count, $"handwear {it.name}");
-                objs.Add(go);
+                objs.Add(go); if (it.kind == "hand") built[it.side] = r;
                 var chk = go.AddComponent<Check>(); chk.Who = who; chk.Name = it.name; chk.Palm = byName.TryGetValue("Base Human" + it.side + "Palm", out var pb) ? pb : null;
                 Plugin.Log.LogInfo($"[WristAccessories] handwear ({who}): {it.name} ({it.kind}, {it.side}) {it.n} verts on {it.bones.Length} bones{(missing > 0 ? $", {missing} bones not found" : "")}, materials {(src == null ? "NOT FOUND" : string.Join("/", r.sharedMaterials.Select(m => m != null ? m.name : "null")))}");
             }
@@ -469,14 +478,26 @@ static partial class HandWear
         try
         {
             t = Copy(src, src.width, src.height); var px = t.GetPixels32(); int ink = 0;
-            // ink = clearly darker than the texture's skin (CIELAB L under mean - 1.5 sd) or a strong colour away from skin hue; 0.10 used
-            // IsSkin, which called pale skin highlights ink (SeamTest 2026-10-27: Day Off's skeleton drawn as pale streaks)
-            var smp = new List<Color>(); for (int i = 0; i < px.Length; i += 97) smp.Add(px[i]);
-            var (sm, ssd) = LabStats(smp); float cut = sm.x - 1.5f * ssd.x, hueS = Mathf.Atan2(sm.z, sm.y);
+            // ink = LOCALLY darker than the skin around it (1.0.5, user 2026-10-28: Lonsdale's mid-brown bone tattoo was not "dark"
+            // against the whole texture's skin, so it hardly showed; lab/mask_new*.jpg): CIELAB L under the skin-only average of a
+            // 49 px (per 1024) window minus 8, where that window is >= 60 % skin (texture islands' edges and clothing stay out)
+            int w = t.width, hgt = t.height, cs = Math.Max(1, w / 512), gw = (w + cs - 1) / cs, gh = (hgt + cs - 1) / cs;
+            var Ls = new float[px.Length]; var cellL = new float[gw * gh]; var cellN = new float[gw * gh]; var cellC = new float[gw * gh];
             for (int i = 0; i < px.Length; i++)
             {
-                var L = ToLab(px[i]); float ch = Mathf.Sqrt(L.y * L.y + L.z * L.z), dh = Mathf.Abs(Mathf.DeltaAngle(Mathf.Atan2(L.z, L.y) * Mathf.Rad2Deg, hueS * Mathf.Rad2Deg));
-                bool isInk = L.x < cut || (ch > 18f && dh > 40f);
+                Color pc = px[i]; Ls[i] = ToLab(pc).x; int x = i % w, y = i / w, ci = (y / cs) * gw + x / cs; cellC[ci] += 1;
+                if (SkinW(pc) > 0.5f) { cellL[ci] += Ls[i]; cellN[ci] += 1; }
+            }
+            int R = Math.Max(1, (int)Math.Round(24f * w / 1024f / cs));
+            float[] Blur(float[] f) { var o = new float[f.Length]; var tmp = new float[f.Length];
+                for (int y = 0; y < gh; y++) { float acc = 0; for (int x = -R; x < gw + R; x++) { if (x + R < gw) acc += f[y * gw + x + R]; if (x - R - 1 >= 0) acc -= f[y * gw + x - R - 1]; if (x >= 0 && x < gw) tmp[y * gw + x] = acc; } }
+                for (int x = 0; x < gw; x++) { float acc = 0; for (int y = -R; y < gh + R; y++) { if (y + R < gh) acc += tmp[(y + R) * gw + x]; if (y - R - 1 >= 0) acc -= tmp[(y - R - 1) * gw + x]; if (y >= 0 && y < gh) o[y * gw + x] = acc; } }
+                return o; }
+            var sL = Blur(cellL); var sN = Blur(cellN); var sC = Blur(cellC);
+            for (int i = 0; i < px.Length; i++)
+            {
+                int x = i % w, y = i / w, ci = (y / cs) * gw + x / cs;
+                bool isInk = sC[ci] > 0 && sN[ci] / sC[ci] >= 0.6f && Ls[i] < sL[ci] / Math.Max(1f, sN[ci]) - 8f;
                 px[i].a = isInk ? (byte)255 : (byte)0; if (isInk) ink++;
             }
             t.SetPixels32(px); t.Apply(true); t.name = src.name + "_WristAccInk"; t.wrapMode = src.wrapMode; UnityEngine.Object.DontDestroyOnLoad(t);

@@ -14,7 +14,7 @@ tabs = [
     ("Pictures", sec["Pictures"]),
     ("Installation", "#### Requirements\n" + sec["Requirements"] + "\n\n#### Install\n" + sec["Install"] + "\n\n#### Uninstall\n" + sec["Uninstall"]),
     ("Recommended Mods", sec["Recommended mods"]),
-    ("Compatibility", sec["Compatibility"] + "\n\n#### Troubleshooting\n" + sec["Troubleshooting"]),
+    ("Compatibility", sec["Compatibility"] + ("\n\n#### Known issues\n" + sec["Known issues"] if "Known issues" in sec else "") + "\n\n#### Troubleshooting\n" + sec["Troubleshooting"]),
     ("Credits & License", sec["Credits"] + "\n\n#### License\n" + sec["License"] + f"\n\n#### Source code\nhttps://github.com/{REPO}\n\n" + sec["Building from source"]),
 ]
 open(OUT, "w", encoding="utf-8").write("## WristAccessories {.tabset}\n\n" + "\n\n".join(f"### {t}\n\n{b}" for t, b in tabs) + "\n\n{.endtabset}\n")

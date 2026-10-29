@@ -8,7 +8,7 @@ using UnityEngine;
 namespace WristAccessories;
 
 // Several accessories per wrist (both wrists) and a ring, built at runtime around the sleeve of the outfit you wear.
-// Offline data (tools in tools/data and tools/acc):
+// Offline data (tools in WORK\wristacc\tools and WORK\tattoo\acc):
 //   outlines.json   - per hands id and side: the outermost sleeve radius per 2 mm along the forearm x 5 deg, the max over
 //                     27 wrist poses (bend, deviation, twist), in <S>Forearm3 bone space; same for the ring finger
 //   acc/acc_*.json  - per game item: every vertex's place along a band curve (s), out (r), along the arm (h), sideways
@@ -134,7 +134,10 @@ static class WristFit
     }
 
     public class Dial { public string prefab; public int pid; public float dt, r, h; public Vector3[] axes; }   // a watch's moving hands, relative to its head
-    public class Acc { public string name, note, bundle; public bool closed; public float L, width, hmid; public List<AccMesh> meshes = new List<AccMesh>(); public Dial dial; public string texture; public float fitR; public bool loose; public string accDir; }
+    public class Acc { public string name, note, bundle; public bool closed; public float L, width, hmid; public List<AccMesh> meshes = new List<AccMesh>(); public Dial dial; public string texture; public float fitR; public bool loose; public string accDir; public Src src; }
+    /// <summary>A watch as its own outfit wears it, in the LForearm3 bone space all outfits share: the outfit (its outline), the
+    /// strap loop's centre on the arm axis, the face direction.</summary>
+    public class Src { public string hid; public Vector3 c, face; public List<(Vector3[] P, Vector3[] N, Vector4[] T)> meshes; }   // meshes: exact original shape, per acc mesh
 
     static Dictionary<string, JObject> _outlines, _bodyOutlines;
     /// <summary>0 = fit the arm at rest, 1 = clear every measured wrist pose (Plugin's \"Sleeve fit\" setting).</summary>
@@ -198,6 +201,7 @@ static class WristFit
             }
             HandWear.Items.Clear(); HandWear.Load(Path.Combine(dir, "acc"));
             LoadAddons(dir);
+            DogTags.Load(new[] { Path.Combine(dir, "acc") }.Concat(AddonDirs.Select(a => Path.Combine(a, "acc"))));
             Plugin.Log.LogInfo($"[WristAccessories] fit data: {_outlines.Count} hands + {_bodyOutlines.Count} upper-body outlines, accessories {string.Join(", ", Accs.Keys)}, {skipped} from other mods left out ({(DateTime.Now - t0).TotalMilliseconds:0} ms)");
         }
         catch (Exception e) { Plugin.Log.LogError("[WristAccessories] fit data: " + e); }
@@ -249,6 +253,9 @@ static class WristFit
         }
         if (a.fitR <= 0 && !a.loose && (a.note ?? "").IndexOf("rigid case", StringComparison.Ordinal) < 0) Straighten(a);   // watches keep theirs: a head is not a slant (addon watches made rigid by lab/rigid_watch.py too)
         if (a.fitR > 0) TurnWatch(a);
+        if (j["src"] is JObject sj)                                          // where its own outfit wears it (watches.py SRC_ONLY)
+            a.src = new Src { hid = (string)sj["hid"], c = V3(sj["c"]), face = V3(sj["face"]),
+                meshes = sj["meshes"] is JArray ma ? ma.Select(m => (m["P"].Select(V3).ToArray(), m["N"].Select(V3).ToArray(), m["T"].Select(t => new Vector4((float)t[0], (float)t[1], (float)t[2], (float)t[3])).ToArray())).ToList() : null };
         if (j["dial"] is JObject d)
             a.dial = new Dial { prefab = (string)d["prefab"], pid = (int)d["pid"], dt = (float)d["dt"], r = (float)d["r"], h = (float)d["h"],
                                 axes = d["axes"].ToObject<float[][]>().Select(v => new Vector3(v[0], v[1], v[2])).ToArray() };

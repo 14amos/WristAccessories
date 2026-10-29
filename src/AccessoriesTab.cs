@@ -97,6 +97,8 @@ static class AccessoriesTab
         l.Add(new Slot { Group = "H", Caption = "LEFT HAND", Choices = () => HandChoices("L"), Get = () => HandOf("L"), Set = v => SetHand("L", v) });
         l.Add(new Slot { Group = "H", Caption = "RIGHT HAND", Choices = () => HandChoices("R"), Get = () => HandOf("R"), Set = v => SetHand("R", v) });
         for (int i = 0; i < 2; i++) { int k = i; l.Add(new Slot { Group = "H", Caption = $"HAND {k + 1}", Choices = PieceChoices, Get = () => PieceOf(k), Set = v => SetPiece(k, v) }); }
+        l.Add(new Slot { Group = "H", Caption = "LEFT ARM", Choices = () => ArmChoices("L"), Get = () => ArmOf("L"), Set = v => SetArm("L", v) });
+        l.Add(new Slot { Group = "H", Caption = "RIGHT ARM", Choices = () => ArmChoices("R"), Get = () => ArmOf("R"), Set = v => SetArm("R", v) });
         l.Add(new Slot { Group = "T", Caption = "UPPER", Tip = "Your upper body clothing (the suits you own). Saved by the game when you close this screen, like its own clothing picker. Not in raid.", Choices = () => SuitChoices(true), Get = () => SuitOf(true), Set = v => SetSuit(v) });
         l.Add(new Slot { Group = "T", Caption = "LOWER", Tip = "Your lower body clothing (the suits you own). Saved by the game when you close this screen, like its own clothing picker. Not in raid.", Choices = () => SuitChoices(false), Get = () => SuitOf(false), Set = v => SetSuit(v) });
         l.Add(new Slot { Group = "T", Caption = "SHOES", Tip = "Another outfit's shoes on your feet: they bend with your feet, your own shoes are tucked inside. Kept whatever LOWER you wear.", Choices = ShoeChoices, Get = () => HandWear.Items.ContainsKey(Plugin.Shoes.Value ?? "") ? Plugin.Shoes.Value : "", Set = v => Plugin.Shoes.Value = v });
@@ -105,16 +107,26 @@ static class AccessoriesTab
         l.Add(new Slot { Group = "O", Caption = "LOAD WHAT", Tip = "What loading a preset puts on.", Choices = () => new List<(string, string)> { ("Everything (with your clothing)", "all"), ("Wrist only (items, watch, ring)", "wrist"), ("Hands and tattoos only", "hands"), ("Clothing only (upper, lower)", "clothing") }, Get = () => Plugin.PresetLoads.Value, Set = v => Plugin.PresetLoads.Value = v });
         l.Add(new Slot { Group = "P", Caption = "SAVE AS", Tip = "Type a name, SAVE stores what you wear now (same name = replaced), DELETE removes the preset with that name." });
         l.Add(new Slot { Group = "S", Caption = "WATCH ON", Tip = "Which wrist the watch is on. BOTH puts the same watch on each wrist.", Choices = () => new List<(string, string)> { ("LEFT", "left"), ("RIGHT", "right"), ("BOTH", "both") }, Get = () => (Plugin.WatchWrist.Value ?? "left").ToLowerInvariant(), Set = v => Plugin.WatchWrist.Value = v });
+        l.Add(new Slot { Group = "O", Caption = "WATCH WORN", Tip = "AS ITS OUTFIT: the watch sits exactly where its own outfit wears it - same side of the wrist, same spot, strap on the skin - so the sleeve you wear covers the strap like the game's own watches. OVER THE SLEEVE / ARM: snug around the outside of whatever you wear there (sleeve or bare arm), face where WATCH FACE says. It usually works when AS ITS OUTFIT does not look right on an outfit. Things to know: a sleeve thicker than the watch's own outfit cuff can hide more of the face; on the right wrist the watch is still fitted over the sleeve.", Choices = () => new List<(string, string)> { ("As its outfit wears it", "outfit"), ("Over the sleeve / arm", "fit") }, Get = () => Plugin.WatchWorn.Value ?? "outfit", Set = v => Plugin.WatchWorn.Value = v });
         l.Add(new Slot { Group = "O", Caption = "WATCH FACE", Tip = "Where the watch face sits: on the back of the wrist, or on the inside like some outfits wear it.", Choices = () => new List<(string, string)> { ("Back of the wrist", "back"), ("Inner wrist", "inner") }, Get = () => Plugin.WatchFace.Value ?? "back", Set = v => Plugin.WatchFace.Value = v });
         l.Add(new Slot { Group = "O", Caption = "ADJUST", Tip = "Pick one of the things you wear, then turn it round your arm with ANGLE or move it along your arm with SLIDE.", Choices = WornChoices, Get = () => AngleItem(), Set = v => _angleItem = v });
         l.Add(new Slot { Group = "N", Caption = "ANGLE", Tip = "Turns the item picked in ANGLE OF round your arm, 5 degrees per click. 0 = where it sits by default.", Get = () => $"{TurnOf(AngleItem()):0}", Set = v => SetTurn(AngleItem(), float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)), Choices = () => new List<(string, string)>() });
+        l.Add(new Slot { Group = "O", Caption = "TATTOO", Tip = "Pick one of the tattoos you wear, then make it bigger or smaller with TATTOO SIZE.", Choices = TattooChoices, Get = () => TattooItem(), Set = v => _tattooItem = v });
+        l.Add(new Slot { Group = "N", Caption = "TATTOO SIZE", Tip = "The tattoo picked in TATTOO, bigger (+) or smaller (-), 5 % per click. 0 = matched to your hand and arm automatically.", Get = () => $"{HandWear.TattooSize(TattooItem()):0}", Set = v => { var t = TattooItem(); if (t != "") HandWear.SetTattooSize(t, float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)); }, Choices = () => new List<(string, string)>() });
         l.Add(new Slot { Group = "N", Caption = "SLIDE", Tip = "Moves the item picked in ADJUST along your arm, 2 mm per click: + toward the hand, - toward the elbow. The items after it move with it.", Get = () => $"{SlideOf(AngleItem()):0}", Set = v => SetSlide(AngleItem(), float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)), Choices = () => new List<(string, string)>() });
         { var o = OnOff("STRAIGHTEN BRACELETS", Plugin.Straighten); o.Tip = "Bracelets taken from other outfits go straight round your wrist and close properly, instead of keeping the tilt they had on their original outfit."; l.Add(o); }
         l.Add(new Slot { Group = "N", Caption = "SKIN SHADE", Tip = "Makes the skin of hands and fingerless gloves from other outfits lighter (+) or darker (-), 5% per click, if the automatic match doesn't quite fit your arm.", Get = () => $"{Plugin.SkinShade.Value:0}", Set = v => Plugin.SkinShade.Value = Mathf.Clamp(float.Parse(v, System.Globalization.CultureInfo.InvariantCulture), -50f, 50f), Choices = () => new List<(string, string)>() });
         { var o = OnOff("MATCH SKIN TONE", Plugin.MatchSkinTone); o.Tip = "Hands and fingerless gloves from other outfits get your own skin tone, so they don't look like someone else's hand at the wrist."; l.Add(o); }
         { var o = OnOff("ON YOUR SCAV", Plugin.OnScav); o.Tip = "Off: your scav wears nothing from this mod (no bracelets, watch, ring or handwear) and keeps the outfit the game gave it."; l.Add(o); }
         { var o = OnOff("WATCHES IN WRIST SLOTS", Plugin.WatchesInSlots); o.Tip = "Lets you put watches in the LEFT and RIGHT wrist slots too, as many as you like. For when you wanna be the timekeeper."; l.Add(o); }
+        { var o = OnOff("DRAW BOTH SIDES", Plugin.DoubleSided); o.Tip = "Straps and bands are drawn from both sides, so a watch strap standing off your sleeve does not look hollow or see-through from behind."; l.Add(o); }
         { var o = OnOff("EVERY SHOE", Plugin.EveryShoe); o.Tip = "Also lists the shoes only bots wear in the SHOES picker: zombies, bosses, scavs, guards and cultists."; l.Add(o); }
+        // DOGTAGS page (DogTags.cs): the hanging tags of the kill sleeves and the dogtag chains
+        // (user 2026-10-28: "add the several dogtag options, however many there are" + pictures): ALL TAGS, then a picture tile per tag
+        l.Add(new Slot { Group = "O", Caption = "ALL TAGS", Tip = "Puts one dogtag on every hanging tag of your kill sleeve or dogtag chains: every dogtag of the game and of the mods you have installed (Unlock All Dogtags, Black Division, ISB, Moreman's tag...). Sleeve's own = the tags it came with.", Choices = () => DogTags.ModelChoices("all"), Get = () => DogTags.ModelOf("all"), Set = v => DogTags.SetModel("all", v) });
+        l.Add(new Slot { Group = "O", Caption = "DOGTAG PRESET", Tip = "Load a saved set of the 8 dogtags (models and flips).", Choices = () => new List<(string, string)> { ("Load a tag set...", "") }.Concat(DogTagPresets.Names().Select(n => (n, n))).ToList(), Get = () => DogTagPresets.Last, Set = v => { if (!string.IsNullOrEmpty(v)) DogTagPresets.Load(v); } });
+        l.Add(new Slot { Group = "Q", Caption = "SAVE DOGTAGS AS", Tip = "Type a name, SAVE stores the 8 dogtags you have now (same name = replaced), DELETE removes the tag set with that name." });
+        for (int i = 1; i <= DogTags.Count; i++) { string k = i.ToString(); l.Add(new Slot { Group = "D", Caption = $"TAG {k}", Tip = $"The dogtag hanging at place {k} of your kill sleeve or dogtag chains (1 = nearest the wrist).", Choices = () => DogTags.ModelChoices(k), Get = () => DogTags.ModelOf(k), Set = v => DogTags.SetModel(k, v) }); }
         { var o = OnOff("CLEAN SKIN UNDER WATCH", Plugin.CleanWatchShadow); o.Tip = "When an outfit's own watch is hidden or replaced, this removes the dark mark the watch left painted on the skin (on outfits that have the fix)."; l.Add(o); }
         return l;
     }
@@ -131,6 +143,13 @@ static class AccessoriesTab
         return l;
     }
     static string AngleItem() { var w = WornChoices(); return w.Any(c => c.Item2 == _angleItem) ? _angleItem : w[0].Item2; }
+    static string _tattooItem = "";
+    static List<(string, string)> TattooChoices()
+    {
+        var l = HW().Where(n => HandWear.Items[n].kind == "tattoo").Select(n => ($"{HandWear.Items[n].note} ({(HandWear.Items[n].side == "L" ? "left" : "right")})", n)).ToList();
+        if (l.Count == 0) l.Add(("No tattoo worn", "")); return l;
+    }
+    static string TattooItem() { var c = TattooChoices(); return c.Any(x => x.Item2 == _tattooItem && x.Item2 != "") ? _tattooItem : c[0].Item2; }
     static float TurnOf(string n) { WristFit.ParseTurns(Plugin.ItemAngles.Value); return WristFit.TurnDeg.TryGetValue(n ?? "", out float d) ? d : 0f; }
     static float SlideOf(string n) { WristFit.ParseSlides(Plugin.ItemSlides.Value); return WristFit.SlideMm.TryGetValue(n ?? "", out float d) ? d : 0f; }
     static void SetSlide(string n, float mm)
@@ -162,7 +181,7 @@ static class AccessoriesTab
     static List<(string, string)> PieceChoices()
     {
         var l = new List<(string, string)> { ("None", "") };
-        foreach (var it in HandWear.Items.Values.Where(i => i.kind != "hand" && i.kind != "feet" && Bundles.Has(i.bundle)).OrderBy(i => i.note)) l.Add(($"{it.note} ({(it.side == "L" ? "left" : "right")})", it.name));
+        foreach (var it in HandWear.Items.Values.Where(i => i.kind != "hand" && i.kind != "feet" && !IsArm(i.name) && Bundles.Has(i.bundle)).OrderBy(i => i.note)) l.Add(($"{it.note} ({(it.side == "L" ? "left" : "right")})", it.name));
         return l;
     }
     static List<(string, string)> ShoeChoices()
@@ -171,12 +190,22 @@ static class AccessoriesTab
         foreach (var it in HandWear.Items.Values.Where(i => i.kind == "feet" && Bundles.Has(i.bundle) && (!i.rare || Plugin.EveryShoe.Value || i.name == Plugin.Shoes.Value)).OrderBy(i => i.rare).ThenBy(i => i.note)) l.Add((it.note, it.name));   // bot-only shoes last, with EVERY SHOE
         return l;
     }
-    static string PieceOf(int k) { var p = HW().Where(n => HandWear.Items[n].kind != "hand").ToList(); return k < p.Count ? p[k] : ""; }
+    // arm tattoos (armink_*: hand + forearm) have their own LEFT ARM / RIGHT ARM slots; HAND 1 / 2 hold the other pieces
+    static bool IsArm(string n) => n != null && n.StartsWith("armink_");
+    static string PieceOf(int k) { var p = HW().Where(n => HandWear.Items[n].kind != "hand" && !IsArm(n)).ToList(); return k < p.Count ? p[k] : ""; }
     static void SetPiece(int k, string v)
     {
-        var all = HW(); var hands = all.Where(n => HandWear.Items[n].kind == "hand").ToList(); var p = all.Where(n => HandWear.Items[n].kind != "hand").ToList();
-        while (p.Count <= k) p.Add(""); p[k] = v; SaveHW(hands.Concat(p));
+        var all = HW(); var keep = all.Where(n => HandWear.Items[n].kind == "hand" || IsArm(n)).ToList(); var p = all.Where(n => HandWear.Items[n].kind != "hand" && !IsArm(n)).ToList();
+        while (p.Count <= k) p.Add(""); p[k] = v; SaveHW(keep.Concat(p));
     }
+    static List<(string, string)> ArmChoices(string side)
+    {
+        var l = new List<(string, string)> { ("None", "") };
+        foreach (var it in HandWear.Items.Values.Where(i => IsArm(i.name) && i.side == side && Bundles.Has(i.bundle)).OrderBy(i => i.note)) l.Add((it.note, it.name));
+        return l;
+    }
+    static string ArmOf(string side) => HW().FirstOrDefault(n => IsArm(n) && HandWear.Items[n].side == side) ?? "";
+    static void SetArm(string side, string v) { var l = HW().Where(n => !(IsArm(n) && HandWear.Items[n].side == side)).ToList(); if (!string.IsNullOrEmpty(v)) l.Add(v); SaveHW(l); }
 
     // ---- shirt / pants: the game's own suits and its own way to change them (InventoryPlayerModelWithStatsWindow.ShowClothingPanel:
     // CustomizationSolver.GetAvailableSuites -> suite.SetClothingsToProfile -> InventoryScreen.CustomizationChanged; the screen
@@ -254,6 +283,19 @@ static class AccessoriesTab
         _scr.GetComponent<Host>()?.ReloadViewer();
     }
 
+    // the options in small tabs (1.1.0, user 2026-10-28: "the menus starting to get too big" - EVERY SHOE ran under the bottom bar)
+    internal static readonly string[] OptPages = { "PRESETS", "FIT", "TATTOOS & SKIN", "DOGTAGS", "MORE" };
+    static string _optPage = "FIT";
+    static string OptPage(string caption) => caption switch
+    {
+        "PRESET" or "LOAD WHAT" or "SAVE AS" => "PRESETS",
+        "WATCH ON" or "WATCH WORN" or "WATCH FACE" or "ADJUST" or "ANGLE" or "SLIDE" or "STRAIGHTEN BRACELETS" or "CLEAN SKIN UNDER WATCH" => "FIT",
+        "TATTOO" or "TATTOO SIZE" or "SKIN SHADE" or "MATCH SKIN TONE" => "TATTOOS & SKIN",
+        "ALL TAGS" or "DOGTAG PRESET" or "SAVE DOGTAGS AS" => "DOGTAGS",
+        var c when c.StartsWith("TAG ") => "DOGTAGS",
+        _ => "MORE",
+    };
+
     static Slot OnOff(string caption, ConfigEntry<bool> e) => new Slot
     {
         Group = "O", Caption = caption, Choices = () => new List<(string, string)> { ("On", "on"), ("Off", "off") },
@@ -278,7 +320,7 @@ static class AccessoriesTab
     {
         "rolex" => "Roler Submariner", "chainlet" => "Chainlet", "chain_gold" => "Golden neck chain", "prokill" => "Prokill medallion chain",
         "dogtag" => "Dogtag on a chain", "paracord" => "Paracord", "amulet" => "Sacred Amulet",
-        "predator_sleeve" => "Kill sleeve (USEC Predator)", "bd_sleeve" => "Kill sleeve (Black Division)", "isb_sleeve" => "Kill sleeve (ISB)", _ => a.note ?? a.name,
+        "predator_sleeve" => "Kill sleeve (USEC Predator)", "bd_sleeve" => "Kill sleeve (Black Division)", "isb_sleeve" => "Kill sleeve (ISB)", "dogtag_sleeve" => "Dogtag chains", _ => a.note ?? a.name,
     };
 
     // slot i of a comma list setting (wrist first)
@@ -460,14 +502,33 @@ static class AccessoriesTab
             int nOpt = _slots.Count(x => x.Group != "H" && x.Group != "L" && x.Group != "R" && x.Group != "W" && x.Group != "T"), nT = _slots.Count(x => x.Group == "T");
             // option rows 40 apart, closer when they would run past the page (14 rows since EVERY SHOE: 1012 of a 989 page)
             float pageH0 = host.rect.height - pr.offsetMin.y + pr.offsetMax.y;
-            float OptStep = Mathf.Clamp((pageH0 - 6 - 16 - (2 * Block + HeadH + 6)) / Math.Max(1, nOpt), 37f, 40f);
+            const float OptStep = 40f, PageTabH = 40f;
+            // the DOGTAGS page's tag tiles: 4 per row, each row DRow high (counted in option rows for the panel height)
+            int nD = _slots.Count(x => x.Group == "D"); const float DRow = 24f + 112f + 30f; float dW = (596f - 3 * 8f) / 4f;
+            int maxRows = OptPages.Max(pg => _slots.Count(x => x.Group != "H" && x.Group != "L" && x.Group != "R" && x.Group != "W" && x.Group != "T" && x.Group != "D" && OptPage(x.Caption) == pg)
+                                             + (pg == "DOGTAGS" ? Mathf.CeilToInt((nD + 3) / 4 * DRow / OptStep) : 0));
             float tTop = 2 * Block + HeadH + 10 + TileHead + TileH + 24;
-            float leftH = Mathf.Max(3 * Block + 304, Mathf.Max(2 * Block + HeadH + 6 + nOpt * OptStep, tTop + ((nT + 1) / 2) * TRow) + 16);
+            float leftH = Mathf.Max(3 * Block + 304, Mathf.Max(2 * Block + HeadH + 6 + PageTabH + 8 + maxRows * OptStep, tTop + ((nT + 1) / 2) * TRow) + 16);
             var left = Panel(_page.transform, new Vector2(30, -6), new Vector2(940, leftH), false);
-            Plugin.Log.LogInfo($"[WristAccessories] ACCESSORIES layout: {nOpt} option rows {OptStep:0.0} apart, {nT} clothing tiles, left panel {leftH:0} high (page {pageH0:0})");
+            Plugin.Log.LogInfo($"[WristAccessories] ACCESSORIES layout: {nOpt} option rows in {OptPages.Length} tabs (at most {maxRows} per tab), {nT} clothing tiles, left panel {leftH:0} high (page {pageH0:0})");
             int nt = 0;
             Header(left, "LEFT WRIST", 0); Header(left, "RIGHT WRIST", Block); Header(left, "WATCH, RING AND OPTIONS", 2 * Block);
-            int nl = 0, nr = 0, nw = 0, no = 0;
+            int nl = 0, nr = 0, nw = 0, nd = 0; float dTop = 0f;
+            // the option tabs: a strip of the game-look fields at the top of the options column, one container per tab
+            float optTop = 2 * Block + HeadH + 6; var pageBox = new Dictionary<string, RectTransform>(); var pageRows = new Dictionary<string, int>();
+            _pageTabs.Clear(); _flipLabels.Clear();
+            float tw = (596f - (OptPages.Length - 1) * 6f) / OptPages.Length;
+            for (int pi = 0; pi < OptPages.Length; pi++)
+            {
+                string pg = OptPages[pi];
+                var pgo = new GameObject("WristAcc_OptPage_" + pg, typeof(RectTransform)); var cr = (RectTransform)pgo.transform; cr.SetParent(left, false);
+                cr.anchorMin = Vector2.zero; cr.anchorMax = Vector2.one; cr.offsetMin = cr.offsetMax = Vector2.zero; pageBox[pg] = cr; pageRows[pg] = 0;
+                var b = Field(left, new Vector2(320 + pi * (tw + 6f), -optTop), new Vector2(tw, PageTabH - 4), pg, TextAlignmentOptions.Center, out var lbl); lbl.fontSize = 15; lbl.characterSpacing = 2;
+                lbl.enableAutoSizing = true; lbl.fontSizeMax = 15; lbl.fontSizeMin = 10;   // 5 tabs since DOGTAGS: TATTOOS & SKIN shrinks to fit
+                _pageTabs.Add((pg, b.GetComponent<Image>(), lbl, pgo));
+                b.onClick.AddListener(() => { _optPage = pg; ShowOptPage(); CloseList(); });
+            }
+            float RowY(string pg) => optTop + PageTabH + 8 + pageRows[pg]++ * OptStep;
             foreach (var sl in _slots)
             {
                 if (sl.Group == "H") continue;                                  // HANDS: in the right panel
@@ -475,35 +536,59 @@ static class AccessoriesTab
                 else if (sl.Group == "R") sl.Box = new Tile(this, sl, left, new Vector2(24 + nr++ * TileStep, -(Block + HeadH + 10)));
                 else if (sl.Group == "W") sl.Box = new Tile(this, sl, left, new Vector2(24 + nw++ * TileStep, -(2 * Block + HeadH + 10)));
                 else if (sl.Group == "T") sl.Box = new Tile(this, sl, left, new Vector2(24 + (nt % 2) * TileStep, -(tTop + (nt++ / 2) * TRow)), true);
+                else if (sl.Group == "D")                                       // a dogtag tile on the DOGTAGS page, its name under it
+                {
+                    var pc = pageBox[OptPage(sl.Caption)];
+                    if (nd == 0) dTop = optTop + PageTabH + 8 + pageRows[OptPage(sl.Caption)] * OptStep + 6;
+                    var tl = new Vector2(320 + (nd % 4) * (dW + 8f), -(dTop + (nd / 4) * DRow));
+                    sl.Box = new Tile(this, sl, pc, tl, true, dW);
+                    // FLIP (user 2026-10-28): this tag turned over, the other face outward - a small button in the tile's top corner
+                    int k = nd; var fb = Field(pc, tl + new Vector2(dW - 62f, -(24f + 4f)), new Vector2(58f, 22f), "", TextAlignmentOptions.Center, out var fl);
+                    fl.fontSize = 11; fl.characterSpacing = 1;
+                    void FlipLabel() => fl.text = DogTags.Flipped(k) ? "FLIPPED" : "FLIP";
+                    FlipLabel(); _flipLabels.Add(FlipLabel);                   // re-read on Refresh (a preset can change the flips)
+                    fb.onClick.AddListener(() => { DogTags.Flip(k); FlipLabel(); });
+                    nd++;
+                }
                 else if (sl.Group == "N")
                 {
-                    float y = 2 * Block + HeadH + 6 + no++ * OptStep;
-                    var cap = Text(left, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
+                    var pc = pageBox[OptPage(sl.Caption)]; float y = RowY(OptPage(sl.Caption));
+                    var cap = Text(pc, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
                     Place(cap.rectTransform, new Vector2(320, -y), new Vector2(250, 36));
-                    sl.Box = new Nudge(this, sl, left, new Vector2(560, -y), 356f);
+                    sl.Box = new Nudge(this, sl, pc, new Vector2(560, -y), 356f);
                 }
                 else if (sl.Group == "P")
                 {
-                    float y = 2 * Block + HeadH + 6 + no++ * OptStep;
-                    var cap = Text(left, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
+                    var pc = pageBox[OptPage(sl.Caption)]; float y = RowY(OptPage(sl.Caption));
+                    var cap = Text(pc, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
                     Place(cap.rectTransform, new Vector2(320, -y), new Vector2(250, 36));
-                    PresetRow(scr, left, new Vector2(560, -y));
+                    PresetRow(scr, pc, new Vector2(560, -y));
+                }
+                else if (sl.Group == "Q")
+                {
+                    var pc = pageBox[OptPage(sl.Caption)]; float y = RowY(OptPage(sl.Caption));
+                    var cap = Text(pc, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
+                    Place(cap.rectTransform, new Vector2(320, -y), new Vector2(250, 36));
+                    PresetRow(scr, pc, new Vector2(560, -y), () => DogTagPresets.Last, DogTagPresets.Save, DogTagPresets.Delete);
                 }
                 else if (sl.Group == "S")
                 {
-                    float y = 2 * Block + HeadH + 6 + no++ * OptStep;
-                    var cap = Text(left, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
+                    var pc = pageBox[OptPage(sl.Caption)]; float y = RowY(OptPage(sl.Caption));
+                    var cap = Text(pc, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
                     Place(cap.rectTransform, new Vector2(320, -y), new Vector2(250, 36));
-                    sl.Box = new Switch(this, sl, left, new Vector2(560, -y), 356f);
+                    sl.Box = new Switch(this, sl, pc, new Vector2(560, -y), 356f);
                 }
                 else
                 {
-                    float y = 2 * Block + HeadH + 6 + no++ * OptStep;
-                    var cap = Text(left, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
+                    var pc = pageBox[OptPage(sl.Caption)]; float y = RowY(OptPage(sl.Caption));
+                    var cap = Text(pc, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
                     Place(cap.rectTransform, new Vector2(320, -y), new Vector2(250, 36));
-                    sl.Box = new Dropdown(this, sl, left, new Vector2(560, -y), 356f);
+                    sl.Box = new Dropdown(this, sl, pc, new Vector2(560, -y), 356f);
                 }
             }
+
+            ShowOptPage();
+            Plugin.Log.LogInfo($"[WristAccessories] WARDROBE option tabs: {string.Join(", ", OptPages.Select(pg => pg + " " + pageRows[pg]))} rows");
 
             // the preview as tall as the page allows (the hands row under it; was 540, user: "my guy is squished")
             float pageH = host.rect.height - pr.offsetMin.y + pr.offsetMax.y;
@@ -518,7 +603,10 @@ static class AccessoriesTab
             Place(hint.rectTransform, new Vector2(16, -(HeadH + 12 + ViewH + 8)), new Vector2(668, 26));
             // HANDS: gloves / other outfits' hands per side, hand pieces (tape, wraps) - the same slot tiles
             float hy = HeadH + 12 + ViewH + 40; Header(right, "HANDS", hy); int nh = 0;
-            foreach (var sl in _slots.Where(x => x.Group == "H")) sl.Box = new Tile(this, sl, right, new Vector2(24 + nh++ * 166, -(hy + HeadH + 10)));
+            // LEFT HAND, RIGHT HAND, HAND 1, HAND 2, LEFT ARM, RIGHT ARM (1.1.0, user 2026-10-28: arm tattoos get their own slots): six
+            // narrower tiles across the 700 wide panel, the preview keeps its size
+            var hs = _slots.Where(x => x.Group == "H").ToList(); float hw = Math.Min(128f, (700f - 48f - (hs.Count - 1) * 6f) / hs.Count);
+            foreach (var sl in hs) sl.Box = new Tile(this, sl, right, new Vector2(24 + nh++ * (hw + 6f), -(hy + HeadH + 10)), false, hw);
             DumpGameLook(scr);
             _page.SetActive(false);
         }
@@ -578,14 +666,14 @@ static class AccessoriesTab
 
         // a picture by value: our icons (png) or a suit's game icon (a sprite: its texture region, kept in proportion in the box)
         static readonly Dictionary<RawImage, (Vector2 pos, float size)> PicBox = new Dictionary<RawImage, (Vector2, float)>();
-        public static bool HasPic(string value) => Icon(value) != null || AccessoriesTab.IsSuit(value);
+        public static bool HasPic(string value) => Icon(value) != null || AccessoriesTab.IsSuit(value) || DogTags.IsModel(value);
         public static bool SetPic(RawImage ri, string value)
         {
             if (ri == null) return false;
             var r = ri.rectTransform; if (!PicBox.TryGetValue(ri, out var box)) PicBox[ri] = box = (r.anchoredPosition, r.sizeDelta.x);
             var tex = Icon(value);
             if (tex != null) { ri.texture = tex; ri.uvRect = new Rect(0, 0, 1, 1); r.anchoredPosition = box.pos; r.sizeDelta = new Vector2(box.size, box.size); ri.enabled = true; return true; }
-            var sp = AccessoriesTab.SuitSprite(value);
+            var sp = AccessoriesTab.SuitSprite(value) ?? DogTags.Icon(value);       // a suit's or a dogtag's game icon
             if (sp != null && sp.texture != null)
             {
                 var tr = sp.textureRect; float W = sp.texture.width, H = sp.texture.height;
@@ -664,29 +752,43 @@ static class AccessoriesTab
 
         // SAVE AS: a name field (a copy of the game's own input field on this screen when there is one, so its hotkeys pause
         // while typing; else a plain TMP_InputField) + SAVE + DELETE, 356 wide like the dropdowns
-        void PresetRow(InventoryScreen scr, RectTransform panel, Vector2 topLeft)
+        void PresetRow(InventoryScreen scr, RectTransform panel, Vector2 topLeft, Func<string> last = null, Action<string> onSave = null, Action<string> onDelete = null)
         {
             TMP_InputField inp = null; var game = scr.GetComponentsInChildren<TMP_InputField>(true).FirstOrDefault();
             if (game != null)
             {
-                var go = Instantiate(game.gameObject, panel, false); go.name = "WristAcc_PresetName"; go.SetActive(true);
+                // the game's field draws no box of its own here (user screenshot 2026-10-28: an empty gap) - ours behind it
+                var frame = Field(panel, topLeft, new Vector2(170, 36), "", TextAlignmentOptions.MidlineLeft, out _); frame.interactable = false;
+                var go = Instantiate(game.gameObject, frame.transform, false); go.name = "WristAcc_PresetName"; go.SetActive(true);
                 inp = go.GetComponent<TMP_InputField>(); inp.onValueChanged.RemoveAllListeners(); inp.onEndEdit.RemoveAllListeners(); inp.onSubmit.RemoveAllListeners();
-                inp.text = ""; Place((RectTransform)go.transform, topLeft, new Vector2(196, 36));
+                inp.text = ""; var ir = (RectTransform)go.transform; ir.anchorMin = Vector2.zero; ir.anchorMax = Vector2.one; ir.pivot = new Vector2(0.5f, 0.5f); ir.offsetMin = new Vector2(8, 2); ir.offsetMax = new Vector2(-8, -2);
+                if (inp.placeholder is TextMeshProUGUI ph0) ph0.text = "Name...";
                 Plugin.Log.LogInfo($"[WristAccessories] presets: name field = copy of the game's {game.name} ({game.GetType().Name})");
             }
             else
             {
-                var bg = Field(panel, topLeft, new Vector2(196, 36), "", TextAlignmentOptions.MidlineLeft, out var txt); bg.transition = Selectable.Transition.None;
+                var bg = Field(panel, topLeft, new Vector2(170, 36), "", TextAlignmentOptions.MidlineLeft, out var txt); bg.transition = Selectable.Transition.None;
                 var area = new GameObject("Text Area", typeof(RectTransform), typeof(RectMask2D)); var ar = (RectTransform)area.transform; ar.SetParent(bg.transform, false);
                 ar.anchorMin = Vector2.zero; ar.anchorMax = Vector2.one; ar.offsetMin = new Vector2(10, 2); ar.offsetMax = new Vector2(-10, -2);
                 txt.transform.SetParent(ar, false); txt.rectTransform.offsetMin = txt.rectTransform.offsetMax = Vector2.zero;
                 inp = bg.gameObject.AddComponent<TMP_InputField>(); inp.textViewport = ar; inp.textComponent = txt; inp.fontAsset = _font; inp.characterLimit = 40;
                 Plugin.Log.LogInfo("[WristAccessories] presets: no game input field on this screen - plain TMP_InputField");
             }
-            var save = Field(panel, topLeft + new Vector2(204, 0), new Vector2(72, 36), "SAVE", TextAlignmentOptions.Center, out _);
-            var del = Field(panel, topLeft + new Vector2(284, 0), new Vector2(72, 36), "DELETE", TextAlignmentOptions.Center, out var dl); dl.fontSize = 15;
-            save.onClick.AddListener(() => { var n = string.IsNullOrWhiteSpace(inp.text) ? Presets.Last : inp.text; Presets.Save(n); Refresh(); });
-            del.onClick.AddListener(() => { var n = string.IsNullOrWhiteSpace(inp.text) ? Presets.Last : inp.text; Presets.Delete(n); inp.text = ""; Refresh(); });
+            var save = Field(panel, topLeft + new Vector2(176, 0), new Vector2(84, 36), "SAVE", TextAlignmentOptions.Center, out var sl0); sl0.fontSize = 15;
+            var del = Field(panel, topLeft + new Vector2(266, 0), new Vector2(90, 36), "DELETE", TextAlignmentOptions.Center, out var dl); dl.fontSize = 15; dl.rectTransform.offsetMin = new Vector2(4, 0); dl.rectTransform.offsetMax = new Vector2(-4, 0);
+            last ??= () => Presets.Last; onSave ??= Presets.Save; onDelete ??= Presets.Delete;   // the outfit presets, or the dogtag sets (DOGTAGS tab)
+            save.onClick.AddListener(() => { var n = string.IsNullOrWhiteSpace(inp.text) ? last() : inp.text; onSave(n); Refresh(); });
+            del.onClick.AddListener(() => { var n = string.IsNullOrWhiteSpace(inp.text) ? last() : inp.text; onDelete(n); inp.text = ""; Refresh(); });
+        }
+
+        readonly List<(string page, Image bg, TextMeshProUGUI label, GameObject box)> _pageTabs = new List<(string, Image, TextMeshProUGUI, GameObject)>();
+        void ShowOptPage()
+        {
+            foreach (var (pg, bg, lbl, box) in _pageTabs)
+            {
+                bool on = pg == _optPage; box.SetActive(on);
+                if (bg != null) bg.color = on ? Picked : FieldBg; if (lbl != null) lbl.color = on ? PickedText : FieldText;
+            }
         }
 
         void MakeRow(RectTransform panel, Slot s, float y)
@@ -741,7 +843,8 @@ static class AccessoriesTab
             if ((_page == null || !_page.activeSelf) && !AccessoriesTab.IconsPending) AccessoriesTab.EndSuitIcons();
         }
 
-        public void Refresh() { foreach (var s in _slots) s.Box?.UpdateLabel(); }
+        readonly List<Action> _flipLabels = new List<Action>();
+        public void Refresh() { foreach (var s in _slots) s.Box?.UpdateLabel(); foreach (var f in _flipLabels) f(); }
 
         // a list of choices over the page, a click outside closes it
         public void OpenList(Slot s, RectTransform under)
@@ -755,16 +858,22 @@ static class AccessoriesTab
             var ch = s.Choices(); string cur = s.Get();
             bool pics = ch.Any(c => HasPic(c.Item2)); _listPics.Clear();
             if (s.Group == "T") AccessoriesTab.RequestSuitIcons(ch.Select(c => c.Item2));
-            float rowH = pics ? 62 : 36, h = Mathf.Min(ch.Count * rowH, pics ? 560 : 460);
-            var box = new GameObject("Box", typeof(RectTransform), typeof(Image), typeof(ScrollRect), typeof(RectMask2D));
+            float rowH = pics ? 62 : 36;
+            bool search = ch.Count > 8; const float SearchH = 44f;          // 1.1.0 (user 2026-10-28): type to filter long lists
+            float h = Mathf.Min(ch.Count * rowH, pics ? 560 : 460) + (search ? SearchH : 0);
+            var box = new GameObject("Box", typeof(RectTransform), typeof(Image));
             var br = (RectTransform)box.transform; br.SetParent(blocker, false);
             box.GetComponent<Image>().color = new Color(0.05f, 0.055f, 0.058f, 0.98f);
             var bo = box.AddComponent<Outline>(); bo.effectColor = Border; bo.effectDistance = new Vector2(1, -1);
-            // under the field, in the page's space (fields sit in panels now)
-            var uc = new Vector3[4]; under.GetWorldCorners(uc); var tl = blocker.InverseTransformPoint(uc[1]); var bl = blocker.InverseTransformPoint(uc[0]);
+            // under the field, in the page's space; no room under it: above; past the screen's right edge: opens to the LEFT, its
+            // right edge on the field's right edge (1.1.0, user 2026-10-28: lists ran off the screen); never past the top or left
+            var uc = new Vector3[4]; under.GetWorldCorners(uc); var tl = blocker.InverseTransformPoint(uc[1]); var bl = blocker.InverseTransformPoint(uc[0]); var trp = blocker.InverseTransformPoint(uc[2]);
             br.anchorMin = br.anchorMax = new Vector2(0.5f, 0.5f); br.pivot = new Vector2(0, 1);
-            float below = bl.y - 2 - h, top = bl.y - 2; if (below < blocker.rect.yMin + 10) top = tl.y + 2 + h;       // no room under it: above
-            br.anchoredPosition = new Vector2(tl.x, top); br.sizeDelta = new Vector2(Mathf.Max(under.rect.width, 520f), h);
+            float wList = Mathf.Max(under.rect.width, 520f);
+            float below = bl.y - 2 - h, top = bl.y - 2; if (below < blocker.rect.yMin + 10) top = tl.y + 2 + h;
+            if (top > blocker.rect.yMax - 10) top = blocker.rect.yMax - 10;
+            float left = tl.x; if (left + wList > blocker.rect.xMax - 10) left = Mathf.Max(blocker.rect.xMin + 10, trp.x - wList);
+            br.anchoredPosition = new Vector2(left, top); br.sizeDelta = new Vector2(wList, h);
             if (S("border_generic") != null) { bo.enabled = false; var bd = Skin(br, "border_generic", new Color(0.62f, 0.62f, 0.58f, 1f), Image.Type.Sliced); bd.transform.SetAsLastSibling(); }
             if (S("popup_shadow") != null)                                      // the game's drop shadow under popups
             {
@@ -773,9 +882,13 @@ static class AccessoriesTab
                 var si = sh.GetComponent<Image>(); si.sprite = S("popup_shadow"); si.type = Image.Type.Sliced; si.color = new Color(0, 0, 0, 0.85f); si.raycastTarget = false;
                 sh.transform.SetSiblingIndex(br.GetSiblingIndex());
             }
-            var content = new GameObject("Content", typeof(RectTransform)); var cr = (RectTransform)content.transform; cr.SetParent(br, false);
+            // the scrolling part, under the search box
+            var view = new GameObject("View", typeof(RectTransform), typeof(Image), typeof(ScrollRect), typeof(RectMask2D)); var vr = (RectTransform)view.transform; vr.SetParent(br, false);
+            vr.anchorMin = Vector2.zero; vr.anchorMax = Vector2.one; vr.offsetMin = Vector2.zero; vr.offsetMax = new Vector2(0, search ? -SearchH : 0); view.GetComponent<Image>().color = new Color(0, 0, 0, 0.001f);
+            var content = new GameObject("Content", typeof(RectTransform)); var cr = (RectTransform)content.transform; cr.SetParent(vr, false);
             cr.anchorMin = new Vector2(0, 1); cr.anchorMax = new Vector2(1, 1); cr.pivot = new Vector2(0.5f, 1); cr.sizeDelta = new Vector2(0, ch.Count * rowH); cr.anchoredPosition = Vector2.zero;
-            var sr = box.GetComponent<ScrollRect>(); sr.content = cr; sr.horizontal = false; sr.movementType = ScrollRect.MovementType.Clamped; sr.scrollSensitivity = 30; sr.viewport = br;
+            var sr = view.GetComponent<ScrollRect>(); sr.content = cr; sr.horizontal = false; sr.movementType = ScrollRect.MovementType.Clamped; sr.scrollSensitivity = 30; sr.viewport = vr;
+            var rows = new List<(RectTransform r, string label, GameObject divider)>();
             for (int i = 0; i < ch.Count; i++)
             {
                 var (label, value) = ch[i]; bool on = value == cur;
@@ -786,13 +899,70 @@ static class AccessoriesTab
                 var t = Text(b.transform, label, 17, on ? PickedText : FieldText, TextAlignmentOptions.MidlineLeft);
                 t.rectTransform.anchorMin = Vector2.zero; t.rectTransform.anchorMax = Vector2.one; t.rectTransform.offsetMin = new Vector2(pics ? 76 : 12, 0); t.rectTransform.offsetMax = new Vector2(-8, 0);
                 if (pics) { var lp = Pic(r, null, new Vector2(8, -2), rowH - 6); SetPic(lp, value); _listPics.Add((lp, value)); }
+                GameObject dvo = null;
                 if (i > 0) { var dv = new GameObject("Divider", typeof(RectTransform), typeof(Image)); var dr = (RectTransform)dv.transform; dr.SetParent(r, false);
                     dr.anchorMin = new Vector2(0, 1); dr.anchorMax = new Vector2(1, 1); dr.pivot = new Vector2(0.5f, 1); dr.sizeDelta = new Vector2(-16, 1); dr.anchoredPosition = new Vector2(0, 1);
-                    var di = dv.GetComponent<Image>(); di.color = new Color(1, 1, 1, 0.06f); di.raycastTarget = false; }
+                    var di = dv.GetComponent<Image>(); di.color = new Color(1, 1, 1, 0.06f); di.raycastTarget = false; dvo = dv; }
                 string v = value; btn.onClick.AddListener(() => { Pick(s, v); CloseList(); });
+                rows.Add((r, label ?? "", dvo));
             }
             int at = ch.FindIndex(c => c.Item2 == cur);                // the picked one in view
-            if (at > 0 && ch.Count * rowH > h) sr.verticalNormalizedPosition = 1f - Mathf.Clamp01((at * rowH - h / 2) / (ch.Count * rowH - h));
+            float viewH = h - (search ? SearchH : 0);
+            if (at > 0 && ch.Count * rowH > viewH) sr.verticalNormalizedPosition = 1f - Mathf.Clamp01((at * rowH - viewH / 2) / (ch.Count * rowH - viewH));
+            if (search)
+            {
+                var inp = SearchField(br, new Vector2(8, -6), new Vector2(wList - 16, SearchH - 10));
+                if (inp != null)
+                {
+                    inp.onValueChanged.AddListener(q =>
+                    {
+                        q = (q ?? "").Trim(); int k = 0;
+                        foreach (var (r, label, dv) in rows)
+                        {
+                            bool show = q.Length == 0 || label.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0;
+                            r.gameObject.SetActive(show); if (!show) continue;
+                            r.anchoredPosition = new Vector2(0, -k * rowH); if (dv != null) dv.SetActive(k > 0); k++;
+                        }
+                        cr.sizeDelta = new Vector2(0, k * rowH); cr.anchoredPosition = Vector2.zero;
+                    });
+                    inp.ActivateInputField(); inp.Select();
+                }
+            }
+            Plugin.Log.LogInfo($"[WristAccessories] WARDROBE list {s.Caption}: {ch.Count} choices, search {(search ? "on" : "off")}, at {left:0},{top:0} ({wList:0}x{h:0}) in {blocker.rect.xMin:0}..{blocker.rect.xMax:0}");
+        }
+
+        // the search box at the top of a long list: a copy of the game's own input field on this screen (its hotkeys pause while you
+        // type), else a plain TMP_InputField; placeholder "Search..."
+        TMP_InputField SearchField(RectTransform parent, Vector2 topLeft, Vector2 size)
+        {
+            try
+            {
+                TMP_InputField inp; var game = _scr != null ? _scr.GetComponentsInChildren<TMP_InputField>(true).FirstOrDefault(f => !f.name.StartsWith("WristAcc")) : null;
+                if (game != null)
+                {
+                    var frame = Field(parent, topLeft, size, "", TextAlignmentOptions.MidlineLeft, out _); frame.interactable = false;
+                    var go = Instantiate(game.gameObject, frame.transform, false); go.name = "WristAcc_Search"; go.SetActive(true);
+                    inp = go.GetComponent<TMP_InputField>(); inp.onValueChanged.RemoveAllListeners(); inp.onEndEdit.RemoveAllListeners(); inp.onSubmit.RemoveAllListeners(); inp.text = "";
+                    var ir = (RectTransform)go.transform; ir.anchorMin = Vector2.zero; ir.anchorMax = Vector2.one; ir.pivot = new Vector2(0.5f, 0.5f); ir.offsetMin = new Vector2(8, 2); ir.offsetMax = new Vector2(-8, -2);
+                }
+                else
+                {
+                    var bg = Field(parent, topLeft, size, "", TextAlignmentOptions.MidlineLeft, out var txt); bg.transition = Selectable.Transition.None;
+                    var area = new GameObject("Text Area", typeof(RectTransform), typeof(RectMask2D)); var ar = (RectTransform)area.transform; ar.SetParent(bg.transform, false);
+                    ar.anchorMin = Vector2.zero; ar.anchorMax = Vector2.one; ar.offsetMin = new Vector2(10, 2); ar.offsetMax = new Vector2(-10, -2);
+                    txt.transform.SetParent(ar, false); txt.rectTransform.offsetMin = txt.rectTransform.offsetMax = Vector2.zero;
+                    inp = bg.gameObject.AddComponent<TMP_InputField>(); inp.textViewport = ar; inp.textComponent = txt; inp.fontAsset = _font;
+                }
+                if (inp.placeholder is TextMeshProUGUI ph) ph.text = "Search...";
+                else if (inp.textViewport != null)
+                {
+                    var p = Text(inp.textViewport, "Search...", 17, Dim, TextAlignmentOptions.MidlineLeft); p.rectTransform.anchorMin = Vector2.zero; p.rectTransform.anchorMax = Vector2.one;
+                    p.rectTransform.offsetMin = p.rectTransform.offsetMax = Vector2.zero; inp.placeholder = p;
+                }
+                inp.characterLimit = 40;
+                return inp;
+            }
+            catch (Exception e) { Plugin.Log.LogError("[WristAccessories] WARDROBE list search: " + e.Message); return null; }
         }
 
         public void CloseList() { if (_list != null) Destroy(_list); _list = null; }
@@ -890,7 +1060,7 @@ static class AccessoriesTab
         public void UpdateLabel()
         {
             float v = float.Parse(_s.Get(), System.Globalization.CultureInfo.InvariantCulture);
-            string u = _s.Caption == "SLIDE" ? " mm" : _s.Caption == "SKIN SHADE" ? "%" : "\u00B0";
+            string u = _s.Caption == "SLIDE" ? " mm" : _s.Caption == "SKIN SHADE" || _s.Caption == "TATTOO SIZE" ? "%" : "\u00B0";
             _v.text = v == 0 ? "0" + u : $"{v:+0;-0}{u}";
         }
     }
@@ -922,9 +1092,9 @@ static class AccessoriesTab
     class Tile : IBox
     {
         readonly Slot _s; readonly RawImage _pic; readonly TextMeshProUGUI _name, _under; readonly Image _border;
-        public Tile(Host h, Slot s, RectTransform panel, Vector2 topLeft, bool nameUnder = false)
+        public Tile(Host h, Slot s, RectTransform panel, Vector2 topLeft, bool nameUnder = false, float width = 0f)
         {
-            _s = s;
+            _s = s; float TileWidth = width > 0 ? width : TileW0; float pic = Mathf.Min(100f, TileWidth - 12f);   // narrower tiles: the HANDS row of 6 (1.1.0)
             if (nameUnder)                                                      // the suit's name under the tile, like the game's clothing slots
             {
                 _under = h.Text(panel, "", 12, new Color(0.86f, 0.85f, 0.78f), TextAlignmentOptions.Center); _under.enableWordWrapping = false; _under.overflowMode = TextOverflowModes.Ellipsis;
@@ -940,7 +1110,7 @@ static class AccessoriesTab
             var bi = bg.GetComponent<Image>(); bi.sprite = Host.S("slot_empty_fill"); bi.type = Image.Type.Tiled; bi.color = bi.sprite != null ? Color.white : new Color(0.06f, 0.065f, 0.07f, 0.95f);
             var btn = bg.GetComponent<Button>(); var cb = btn.colors; cb.highlightedColor = new Color(1.35f, 1.35f, 1.3f, 1); cb.pressedColor = new Color(1.6f, 1.6f, 1.5f, 1); btn.colors = cb;
             btn.onClick.AddListener(() => h.OpenList(_s, r));
-            _pic = Host.Pic(r, null, new Vector2((TileWidth - 100) / 2, -(BodyH - 100) / 2), 100);
+            _pic = Host.Pic(r, null, new Vector2((TileWidth - pic) / 2, -(BodyH - pic) / 2), pic);
             _name = h.Text(r, "", 12, new Color(0.86f, 0.85f, 0.78f), TextAlignmentOptions.Center); _name.enableWordWrapping = true;
             _name.rectTransform.anchorMin = Vector2.zero; _name.rectTransform.anchorMax = Vector2.one; _name.rectTransform.offsetMin = new Vector2(6, 6); _name.rectTransform.offsetMax = new Vector2(-6, -6);
             _border = Host.Skin(r, Host.S("slot_border_full") != null ? "slot_border_full" : "Allscreens_Borders_Default", new Color(0.55f, 0.55f, 0.52f, 1f), Image.Type.Sliced);
@@ -954,7 +1124,7 @@ static class AccessoriesTab
             }
             UpdateLabel();
         }
-        const float TileWidth = 128f, HeaderH = 24f, BodyH = 112f;
+        const float TileW0 = 128f, HeaderH = 24f, BodyH = 112f;
         public void UpdateLabel()
         {
             string v = _s.Get();
@@ -963,7 +1133,7 @@ static class AccessoriesTab
             var ch = _s.Choices(); int i = ch.FindIndex(c => c.Item2 == v);
             bool empty = string.IsNullOrEmpty(v) || v == "none";
             if (_under != null) _under.text = i >= 0 ? ch[i].Item1 : "";
-            _name.text = tex || empty || _under != null ? (string.IsNullOrEmpty(v) && _s.Caption == "WATCH" ? "OUTFIT'S OWN" : string.IsNullOrEmpty(v) && _s.Caption.EndsWith(" HAND") ? "YOUR OWN" : "") : (i >= 0 ? ch[i].Item1 : v);
+            _name.text = tex || empty || _under != null ? (string.IsNullOrEmpty(v) && _s.Caption == "WATCH" ? "OUTFIT'S OWN" : string.IsNullOrEmpty(v) && _s.Caption.EndsWith(" HAND") ? "YOUR OWN" : string.IsNullOrEmpty(v) && _s.Group == "D" ? "SLEEVE'S OWN" : "") : (i >= 0 ? ch[i].Item1 : v);
             _border.color = empty ? new Color(0.40f, 0.40f, 0.38f, 1f) : new Color(0.78f, 0.77f, 0.70f, 1f);
         }
     }
@@ -1002,6 +1172,8 @@ static class AccessoriesTab
         }
     }
 
+    // your character on a stage of its own (far from every other camera), loaded by the game's PlayerModelLoader like the
+    // character screen's model (so our preview fitting puts the accessories on it and refits on every pick), seen by our own
     // the viewer's lights burn only between this camera's cull and its last draw, so no other camera ever sees them
     class StageLights : MonoBehaviour
     {
@@ -1012,8 +1184,6 @@ static class AccessoriesTab
         void Set(bool on) { if (Lights != null) foreach (var l in Lights) if (l != null) l.enabled = on; }
     }
 
-    // your character on a stage of its own (far from every other camera), loaded by the game's PlayerModelLoader like the
-    // character screen's model (so our preview fitting puts the accessories on it and refits on every pick), seen by our own
     // camera into a texture: aimed at the wrist, drag to turn round the forearm, scroll to zoom. Lights light only that layer.
     class WristViewer : MonoBehaviour, IDragHandler, IScrollHandler
     {
@@ -1043,7 +1213,8 @@ static class AccessoriesTab
                 Plugin.Log.LogInfo($"[WristAccessories] viewer: picture {rw}x{rh} for a {box.x:0}x{box.y:0} box");
                 _cam.targetTexture = _rt; _cam.cullingMask = 1 << layer; _cam.clearFlags = CameraClearFlags.SolidColor; _cam.backgroundColor = new Color(0.045f, 0.05f, 0.053f, 1f);
                 _cam.fieldOfView = 30f; _cam.nearClipPlane = 0.01f; _cam.farClipPlane = 20f;
-                // EFT renders deferred, which does not keep a light to its culling mask: lit in raids (reports 2026-10-28)
+                // EFT renders deferred, where a light's culling mask does not hold: these lights lit the whole raid (reports 2026-10-28).
+                // They are switched on only while this camera draws (StageLights).
                 var lights = new List<Light>();
                 foreach (var (rot, intensity) in new[] { (new Vector3(35, 150, 0), 1.1f), (new Vector3(10, -40, 0), 0.45f), (new Vector3(-30, 60, 0), 0.25f) })
                 {

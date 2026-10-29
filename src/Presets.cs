@@ -15,8 +15,8 @@ namespace WristAccessories;
 static class Presets
 {
     static string FilePath => Path.Combine(BepInEx.Paths.ConfigPath, "com.amos.wristaccessories.presets.json");
-    static ConfigEntry<string>[] Wrist => new[] { Plugin.LeftWrist, Plugin.RightWrist, Plugin.Watch, Plugin.WatchFace, Plugin.WatchWrist, Plugin.RingHand, Plugin.ItemAngles, Plugin.ItemSlides };
-    static ConfigEntry<string>[] Hands => new[] { Plugin.Handwear };
+    static ConfigEntry<string>[] Wrist => new[] { Plugin.LeftWrist, Plugin.RightWrist, Plugin.Watch, Plugin.WatchFace, Plugin.WatchWorn, Plugin.WatchWrist, Plugin.RingHand, Plugin.ItemAngles, Plugin.ItemSlides, Plugin.DogTagPicks, Plugin.DogTagFlips };
+    static ConfigEntry<string>[] Hands => new[] { Plugin.Handwear, Plugin.TattooSizes };
     static ConfigEntry<string>[] All => Wrist.Concat(Hands).Concat(new[] { Plugin.Shoes }).ToArray();
     static string Key(ConfigEntry<string> e) => e.Definition.Key;
     public static string Last = "";
@@ -66,5 +66,43 @@ static class Presets
         name = (name ?? "").Trim(); var o = Read(); if (o[name] == null) return;
         o.Remove(name); Write(o); if (Last == name) Last = "";
         Plugin.Log.LogInfo($"[WristAccessories] presets: deleted \"{name}\"");
+    }
+}
+
+// Dogtag presets (user 2026-10-29: "add dogtag presets, for the custom dogtag kill sleeve"): named sets of the 8 hanging tags
+// (models + flips) in BepInEx/config/com.amos.wristaccessories.dogtag-presets.json, on the DOGTAGS tab - apart from the outfit
+// presets, so a tag set can go onto any outfit preset
+static class DogTagPresets
+{
+    static string FilePath => Path.Combine(BepInEx.Paths.ConfigPath, "com.amos.wristaccessories.dogtag-presets.json");
+    public static string Last = "";
+    static JObject Read()
+    {
+        try { return File.Exists(FilePath) ? JObject.Parse(File.ReadAllText(FilePath)) : new JObject(); }
+        catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] dogtag presets: {FilePath}: {e.Message}"); return new JObject(); }
+    }
+    static void Write(JObject o)
+    {
+        try { File.WriteAllText(FilePath, o.ToString()); }
+        catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] dogtag presets: writing {FilePath}: {e.Message}"); }
+    }
+    public static List<string> Names() => Read().Properties().Select(p => p.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+    public static void Save(string name)
+    {
+        name = (name ?? "").Trim(); if (name.Length == 0) return;
+        var o = Read(); o[name] = new JObject { ["Dogtags"] = Plugin.DogTagPicks.Value ?? "", ["Flips"] = Plugin.DogTagFlips.Value ?? "" }; Write(o); Last = name;
+        Plugin.Log.LogInfo($"[WristAccessories] dogtag presets: saved \"{name}\"");
+    }
+    public static void Load(string name)
+    {
+        if (!(Read()[name] is JObject p)) { Plugin.Log.LogWarning($"[WristAccessories] dogtag presets: no preset \"{name}\""); return; }
+        Plugin.DogTagPicks.Value = (string)p["Dogtags"] ?? ""; Plugin.DogTagFlips.Value = (string)p["Flips"] ?? ""; Last = name;
+        Plugin.Log.LogInfo($"[WristAccessories] dogtag presets: loaded \"{name}\"");
+    }
+    public static void Delete(string name)
+    {
+        name = (name ?? "").Trim(); var o = Read(); if (o[name] == null) return;
+        o.Remove(name); Write(o); if (Last == name) Last = "";
+        Plugin.Log.LogInfo($"[WristAccessories] dogtag presets: deleted \"{name}\"");
     }
 }

@@ -16,10 +16,14 @@ character screen.
 - Everything updates **live**: what you change on the WARDROBE tab shows on your character at once, in the hideout too - no restart, no raid needed.
 - **WARDROBE tab** next to the game's own character tabs, with a live preview of your character (drag to turn, scroll to zoom).
 - **LEFT 1-5 / RIGHT 1-5**: up to five items per forearm, from the wrist toward the elbow: bracelets, chains, the Prokill
-  medallion chain, a dogtag on a chain, paracord, the Sacred Amulet, kill sleeves and pieces cut from other outfits.
+  medallion chain, a dogtag on a chain, paracord, the Sacred Amulet, kill sleeves, dogtag chains and pieces cut from other outfits.
 - **PRESETS**: save what you wear under a name and load it again later (everything, only the wrist, or only hands and tattoos).
 - **WATCH**: replace your outfit's own watch with one of 16 watches, each named after the outfit it comes from, or wear none.
-  The game's own watches keep their moving hands.
+  The game's own watches keep their moving hands. WATCH WORN "As its outfit wears it" puts each watch exactly where its own
+  outfit wears it (same side of the wrist, strap tucked under your cuff); "Over the sleeve / arm" fits it snug round the outside.
+- **DOGTAGS**: the 8 hanging tags of the kill sleeves and the dogtag chains, each set to any dogtag of the game and of the mods
+  you have installed (Unlock All Dogtags, Black Division, ISB, Moreman's tag...), with pictures, and FLIP to turn a tag over.
+- **TATTOOS**: hand and arm tattoos from other outfits, pressed onto your own skin (hidden under sleeves); TATTOO SIZE.
 - **RING**: gold skull ring on the left or right hand.
 - **LEFT HAND / RIGHT HAND / HAND 1-2**: gloves, other outfits' hands and hand pieces (tape, finger wraps). They bend with your fingers.
 - **UPPER / LOWER**: your owned suits, picked right on the tab (the game saves them when you close the screen).
@@ -69,6 +73,7 @@ Hands from other outfits; the seam at the wrist before (top) and after the blend
   matches where your watch face sits (back or inside of the wrist).
 - **[Hj's Improved Customization UI](https://sp-mod.com/mod/3069/hjs-improved-customization-ui)** - a better clothing / customization
   screen; works side by side with the WARDROBE tab.
+- **[Unlock All Dogtags](https://sp-mod.com/mod/3013/unlockalldogtags)** by MyButtHasARash - adds a lot more dogtag customization!
 
 ## Requirements
 - SPT 4.1.6 (BepInEx comes with SPT).
@@ -91,6 +96,11 @@ Safe to remove: your profile doesn't depend on this mod. The only thing it saves
 - **Manimal-WatchAnims** (optional): its "look at your watch" animation then matches where your picked watch sits on
   the wrist, and it also plays in the hideout.
 
+## Known issues
+- Hands taken from other outfits (LEFT HAND / RIGHT HAND) can show a jagged edge across the back of the hand. A fix is coming.
+- The 3D preview on the WARDROBE tab can look different from first person (for example, watches worn "as its outfit wears it"
+  show over the sleeve in the preview).
+
 ## Troubleshooting
 Every line from this mod starts with `[WristAccessories]` in `BepInEx\LogOutput.log`. Please include those lines in a bug report.
 
@@ -105,6 +115,7 @@ Every line from this mod starts with `[WristAccessories]` in `BepInEx\LogOutput.
 ## License
 MIT for the plugin code, see `LICENSE`. The item data (`acc/`, `watchshadow/`) is derived from Escape from Tarkov's and
 other mods' outfits; it is not covered by the license and belongs to its owners.
+
 
 ## Building from source
 `src/` holds the plugin. Build with the .NET SDK: `dotnet build src -c Release -o out -p:SPTPath="<your SPT folder>"`

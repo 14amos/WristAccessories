@@ -118,6 +118,16 @@ for name, cid, mesh_name, subs in SPECS:
     hw = bw_ * (lo_ + hi_ + 1) / 2 + 0.003 / float(np.median(rad))
     print(f"{name}: face {np.degrees(face):.0f} deg, half-width {np.degrees(hw):.0f} deg, thickness mm {np.round(np.roll(thick, nb // 2 - b0) * 1000).astype(int).tolist()}", flush=True)
     if os.environ.get("DIAG"): continue
+    # "worn like its outfit" (user 2026-10-28, Aggressor TAC watch shots): where the outfit itself wears the watch, in the
+    # LForearm3 bone space every outfit shares - the source outfit (its outline), the strap loop's centre on the arm axis and
+    # the face direction. SRC_ONLY=<json>: only these, merged into that file (no acc_*.json rewritten)
+    if os.environ.get("SRC_ONLY"):
+        sf = os.environ["SRC_ONLY"]; src = json.load(open(sf)) if os.path.exists(sf) else {}
+        a_c0 = float(np.median(al)); fdir = np.cos(face) * e1 + np.sin(face) * e2
+        src[name] = dict(hid=cid, c=[float(x) for x in (w + ax * a_c0)], face=[float(x) for x in fdir],
+                         # the watch exactly as its outfit wears it (LForearm3 bone space), per acc mesh in the acc json's vertex order
+                         meshes=[dict(P=np.round(m["P"], 6).tolist(), N=np.round(m["N"], 5).tolist(), T=np.round(m["T"], 5).tolist()) for m in ms])
+        json.dump(src, open(sf, "w"), indent=1); continue
     a_c = float(np.median(al)); c = w + ax * a_c
     r0 = float(np.median(rad[dang(ang) > 0.6])) if (dang(ang) > 0.6).any() else float(np.median(rad))
     th = face + np.linspace(0, 2 * np.pi, 180, endpoint=False)

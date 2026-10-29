@@ -23,6 +23,7 @@ for f in FILES:
         cuv = UV[T].mean(1) % 1.0; cpx = img[((1 - cuv[:, 1]) * (img.shape[0] - 1)).astype(int), (cuv[:, 0] * (img.shape[1] - 1)).astype(int)]
         ink_t = ink_v[T].any(1) | np.array([not skin_like(p) for p in cpx])
         near = np.zeros(len(P), bool); near[np.unique(T[ink_t])] = True; keep = ink_t | near[T].any(1)      # + one ring round the ink
+        if os.environ.get("ALL") == "1": keep = np.ones(len(T), bool)   # 1.0.5: the whole hand shell (thin ink lines on big triangles were left out; InkMaterial shows only the ink)
         if keep.any(): subs.append(dict(s, tris=b64(T[keep].ravel(), "<i4"))); kept += int(keep.sum())
     if not subs: print("no ink:", h["name"]); continue
     P2 = P + N / (np.linalg.norm(N, axis=1, keepdims=True) + 1e-9) * 0.0006

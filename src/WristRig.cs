@@ -73,7 +73,7 @@ class WristRig : MonoBehaviour
             string hid = body != null && body.BodyCustomization != null && body.BodyCustomization.TryGetValue(part, out var id) ? id.ToString() : "";
             string hidNote = null;
             if (hands != null) hid = WristFit.DrawnId(hid, hands.GetRenderers().OfType<SkinnedMeshRenderer>().Select(r => r.sharedMesh != null ? r.sharedMesh.name : null), !fp, out hidNote);
-            string key = body == null || hands == null ? "" : $"{hid}|{hands.GetInstanceID()}|{Plugin.Watch.Value}|{Plugin.LeftWrist.Value}|{Plugin.RightWrist.Value}|{Plugin.RingHand.Value}|{Plugin.WatchFace.Value}|{Plugin.WatchWrist.Value}|{Plugin.InnerAngle.Value:0}|{Plugin.ItemAngles.Value}|{Plugin.Handwear.Value}|{Plugin.ItemSlides.Value}|{Plugin.SleeveFit.Value:0.00}|{Plugin.LooseSize.Value}|{Plugin.CleanWatchShadow.Value}|{Plugin.Straighten.Value}|{Plugin.MatchSkinTone.Value}|{Plugin.SkinShade.Value:0}|{Plugin.OnScav.Value}|{Plugin.WatchesInSlots.Value}|{Plugin.Shoes.Value}|{DataVersion}";
+            string key = body == null || hands == null ? "" : $"{hid}|{hands.GetInstanceID()}|{Plugin.Watch.Value}|{Plugin.LeftWrist.Value}|{Plugin.RightWrist.Value}|{Plugin.RingHand.Value}|{Plugin.WatchFace.Value}|{Plugin.WatchWrist.Value}|{Plugin.InnerAngle.Value:0}|{Plugin.ItemAngles.Value}|{Plugin.Handwear.Value}|{Plugin.ItemSlides.Value}|{Plugin.SleeveFit.Value:0.00}|{Plugin.LooseSize.Value}|{Plugin.CleanWatchShadow.Value}|{Plugin.Straighten.Value}|{Plugin.MatchSkinTone.Value}|{Plugin.SkinShade.Value:0}|{Plugin.OnScav.Value}|{Plugin.WatchesInSlots.Value}|{Plugin.Shoes.Value}|{Plugin.DogTagPicks.Value}|{Plugin.WatchWorn.Value}|{Plugin.DogTagFlips.Value}|{Plugin.DoubleSided.Value}|{Plugin.TattooSizes.Value}|{Plugin.SeamBlend.Value}|{DataVersion}";   // 1.1.0: tattoo sizes + seam blend rebuild too (user: "the tattoo size modifier doesnt work")
             if (key != _key)
             {
                 _key = key; _body = body; _hands = hands; Clear();
@@ -200,7 +200,8 @@ class WristRig : MonoBehaviour
             // into the Raid pools, which the game clears after every raid: the cached materials lost their shaders (magenta
             // accessories on the post-raid character preview, friend's screenshot 2026-10-26)
             var bundles = plan.SelectMany(p => p.items).SelectMany(a => a.meshes.Select(m => m.bundle).Concat(new[] { a.bundle }).Concat(a.dial != null ? new[] { a.dial.prefab } : new string[0]))   // + the item's own bundle: loose entries have no meshes of their own
-                .Concat(HandWear.Bundles(hw)).Concat(HandWear.Bundles(shoes)).Where(b => !string.IsNullOrEmpty(b)).Distinct().Where(b => !Held.Contains(b)).ToArray();
+                .Concat(HandWear.Bundles(hw)).Concat(HandWear.Bundles(shoes)).Concat(DogTags.Bundles(plan.SelectMany(p => p.items)))   // + the picked dogtags' item bundles
+                .Where(b => !string.IsNullOrEmpty(b)).Distinct().Where(b => !Held.Contains(b)).ToArray();
             if (bundles.Length > 0)
             {
                 var tok = Singleton<IEasyAssets>.Instance.Retain(bundles);
@@ -248,7 +249,137 @@ class WristRig : MonoBehaviour
                     // where the game's own outfits wear their watches (measured from their hands meshes, angle from the back of the hand):
                     // back of the wrist +25..+55 deg (GMT, Garmin, Suunto, GBD-200; mean +33), inner wrist -140..-175 (Luminox, Montana,
                     // Traser, BEAR x2, USEC, GA-2000; mean -156) - the spots Manimal's watch_usec / watch_bear clips turn to the camera
-                    placed = WristFit.Stack(items, o, (Plugin.WatchFace.Value == "inner" ? Plugin.InnerAngle.Value : 33f) * Mathf.Deg2Rad);
+                    // WATCH WORN "as its outfit" (user 2026-10-28, Aggressor TAC watch shots): the picked watch where its own outfit
+                    // wears it - that outfit's arm outline, face direction and distance from the hand (same skeleton in every outfit),
+                    // so the strap sits on the skin and the sleeve worn now covers it like the game's own watch
+                    var its = items; WristFit.Acc srcW = null; WristFit.Outline srcO = null;
+                    var pw = its.FirstOrDefault(a => a.name == Plugin.Watch.Value);
+                    if (pw != null) Plugin.Log.LogInfo($"[WristAccessories] {(preview ? "preview " : "")}{part}: watch {pw.name}, WATCH WORN '{Plugin.WatchWorn.Value}', own-outfit spot {(pw.src != null ? pw.src.hid : "NOT IN DATA")}{(part != "L" && Plugin.WatchWorn.Value == "outfit" ? " - right wrist: over the sleeve" : "")}");
+                    if (pw != null && its[0] != pw) { its = new[] { pw }.Concat(its.Where(a => a != pw)).ToList(); }
+                    if (part == "L" && Plugin.WatchWorn.Value == "outfit" && its.Count > 0 && its[0].name == Plugin.Watch.Value && its[0].src != null)
+                    {
+                        srcO = WristFit.GetOutline(its[0].src.hid, "L", out string shw, !fp);
+                        if (srcO != null && shw.StartsWith("own")) { srcW = its[0]; its = its.Skip(1).ToList(); }
+                        else { srcO = null; Plugin.Log.LogInfo($"[WristAccessories] {(preview ? "preview " : "")}watch {its[0].name}: no outline of its own outfit {its[0].src.hid} ({shw}) - fitted over the sleeve instead"); }
+                    }
+                    List<WristFit.Built> wb = null; WristFit.DialPose wd = default; var so = o;
+                    if (srcW != null)
+                    {
+                        float phi0 = Mathf.Atan2(Vector3.Dot(srcW.src.face, srcO.e2), Vector3.Dot(srcW.src.face, srcO.e1));
+                        float aC = Vector3.Dot(srcW.src.c - srcO.w, srcO.ax) + srcW.hmid;
+                        wb = WristFit.Place(srcW, srcO, aC, 1, phi0); wd = WristFit.LastDial;
+                        // the exact shape and spot from its outfit (user shot 2026-10-29: refitted round the Aggressor parka's sleeve the
+                        // TAC strap floated as a big loose band on a bare arm) - Place only gave the layout's order and the moving hands
+                        if (srcW.src.meshes != null && srcW.src.meshes.Count == wb.Count && wb.Select((b, k) => b.pos.Length == srcW.src.meshes[k].P.Length).All(x => x))
+                        {
+                            var head = Enumerable.Range(0, wb[0].pos.Length).Where(i => wb[0].kind[i] > 0).ToArray();
+                            if (wd.ok && head.Length >= 3)
+                            {
+                                // the moving hands follow the head from where Place put it to where the outfit has it
+                                Quaternion Frame(Vector3[] p, out Vector3 c)
+                                {
+                                    var cc = Vector3.zero; foreach (var i in head) cc += p[i]; cc /= head.Length; c = cc;
+                                    int i1 = head.OrderByDescending(i => (p[i] - cc).sqrMagnitude).First(); var u1 = (p[i1] - cc).normalized;
+                                    int i2 = head.OrderByDescending(i => Vector3.Cross(p[i] - cc, u1).sqrMagnitude).First();
+                                    return Quaternion.LookRotation(u1, Vector3.Cross(u1, p[i2] - cc).normalized);
+                                }
+                                var qP = Frame(wb[0].pos, out var cP); var qS = Frame(srcW.src.meshes[0].P, out var cS); var R = qS * Quaternion.Inverse(qP);
+                                wd = new WristFit.DialPose { ok = true, prefab = wd.prefab, pos = cS + R * (wd.pos - cP), rot = R * wd.rot };
+                            }
+                            for (int k = 0; k < wb.Count; k++) { var e = srcW.src.meshes[k]; wb[k].pos = (Vector3[])e.P.Clone(); wb[k].nrm = (Vector3[])e.N.Clone(); wb[k].tan = (Vector4[])e.T.Clone(); }   // copies: the widen / draw-in / ANGLE steps below change them in place
+                        }
+                        else Plugin.Log.LogWarning($"[WristAccessories] watch {srcW.name}: no exact outfit shape in the data - refitted shape used");
+                        // ADJUST -> ANGLE / SLIDE on this watch (user 2026-10-29: "the angle change isn't doing anything" - the outfit-placed
+                        // watch skipped Stack, where they are applied): turned round this arm's axis, moved along it (+ toward the hand)
+                        WristFit.ParseTurns(Plugin.ItemAngles.Value); WristFit.ParseSlides(Plugin.ItemSlides.Value);
+                        float tDeg = WristFit.TurnDeg.TryGetValue(srcW.name, out var td) ? td : 0f, sMm = WristFit.SlideMm.TryGetValue(srcW.name, out var sm) ? sm : 0f;
+                        if (Mathf.Abs(tDeg) > 0.01f || Mathf.Abs(sMm) > 0.01f)
+                        {
+                            var q = Quaternion.AngleAxis(tDeg, Vector3.Cross(o.e1, o.e2).normalized); var mv = o.ax * (sMm / 1000f);
+                            Vector3 Mv(Vector3 p) { var rel = p - o.w; float al = Vector3.Dot(rel, o.ax); return o.w + o.ax * al + q * (rel - o.ax * al) + mv; }
+                            foreach (var b in wb)
+                                for (int i = 0; i < b.pos.Length; i++)
+                                {
+                                    b.pos[i] = Mv(b.pos[i]); b.nrm[i] = q * b.nrm[i];
+                                    var t3 = q * new Vector3(b.tan[i].x, b.tan[i].y, b.tan[i].z); b.tan[i] = new Vector4(t3.x, t3.y, t3.z, b.tan[i].w);
+                                }
+                            if (wd.ok) wd = new WristFit.DialPose { ok = true, prefab = wd.prefab, pos = Mv(wd.pos), rot = q * wd.rot };
+                            Plugin.Log.LogInfo($"[WristAccessories] watch {srcW.name}: ANGLE {tDeg:0} deg, SLIDE {sMm:0} mm applied");
+                        }
+                        // the watch's head inside THIS sleeve (user 2026-10-29: "on some outfits the watch just wont show up" - a sleeve
+                        // thicker than its own outfit's cuff swallows it): most of the head under this outfit's arm outline -> over the sleeve
+                        WristFit.FaceAngle[srcW.name] = phi0 + tDeg * Mathf.Deg2Rad;   // the watch animation picks its clip from this (ANGLE included)
+                        var headPid = wb.SelectMany(b => Enumerable.Range(0, b.pid.Length).Where(i => b.kind[i] > 0).Select(i => b.pid[i])).GroupBy(p => p).OrderByDescending(g => g.Count()).Select(g => g.Key).DefaultIfEmpty(-1).First();
+                        int hv = 0, hin = 0; float need = 0f, rSum = 0f, sHead = 1f;
+                        foreach (var b in wb)
+                            for (int i = 0; i < b.pos.Length; i++)
+                            {
+                                if (b.kind[i] == 0 || b.pid[i] != headPid) continue;
+                                var rel = b.pos[i] - o.w; float al = Vector3.Dot(rel, o.ax); var pp = rel - o.ax * al;
+                                float ph = Mathf.Repeat(Mathf.Atan2(Vector3.Dot(pp, o.e2), Vector3.Dot(pp, o.e1)), 2 * Mathf.PI);
+                                int k = ((Mathf.RoundToInt(ph / (2 * Mathf.PI / o.nd)) % o.nd) + o.nd) % o.nd, j = Mathf.Clamp(Mathf.FloorToInt((al - o.a0) / o.da), 0, o.na - 1);
+                                hv++; rSum += pp.magnitude; if (pp.magnitude < o.T(j, k)) hin++;
+                                need = Mathf.Max(need, o.T(j, k) + 0.0015f - pp.magnitude); if (pp.magnitude > 1e-4f) sHead = Mathf.Max(sHead, (o.T(j, k) + 0.0015f) / pp.magnitude);
+                            }
+                        if (hv > 0 && hin * 2 > hv)
+                        {
+                            // a sleeve thicker than its own outfit's cuff: the same watch, its loop widened round the arm just enough that
+                            // the head sits 1.5 mm out of this sleeve (user 2026-10-29: the over-the-sleeve fallback looked buggy - ScavTac,
+                            // QILO watches); the moving hands go out with it
+                            float s = sHead;                                  // every head point out of the sleeve (not just the average one)
+                            Vector3 Out(Vector3 p) { var rel = p - o.w; float al = Vector3.Dot(rel, o.ax); return o.w + o.ax * al + (rel - o.ax * al) * s; }
+                            foreach (var b in wb) for (int i = 0; i < b.pos.Length; i++) b.pos[i] = Out(b.pos[i]);
+                            if (wd.ok) wd = new WristFit.DialPose { ok = true, prefab = wd.prefab, pos = Out(wd.pos), rot = wd.rot };
+                            Plugin.Log.LogInfo($"[WristAccessories] {(preview ? "preview " : "")}watch {srcW.name} as its outfit wears it, loop widened x{s:0.00} ({need * 1000:0.0} mm) to clear this sleeve ({hin} of {hv} head points were inside)");
+                        }
+                        else
+                        {
+                            // the whole watch standing off this arm (its own outfit wore it over a thicker cuff; user shot 2026-10-29: the
+                            // green C-Shock "looks a bit big" on a bare arm): the loop drawn in until its closest point is 1 mm off the arm.
+                            // Not when part of it is under this sleeve (that is the tucked-under-the-cuff look)
+                            float sMin = 0f;
+                            foreach (var b in wb)
+                                for (int i = 0; i < b.pos.Length; i++)
+                                {
+                                    var rel = b.pos[i] - o.w; float al = Vector3.Dot(rel, o.ax); var pp = rel - o.ax * al; float r = pp.magnitude; if (r < 1e-4f) continue;
+                                    float ph = Mathf.Repeat(Mathf.Atan2(Vector3.Dot(pp, o.e2), Vector3.Dot(pp, o.e1)), 2 * Mathf.PI);
+                                    int k = ((Mathf.RoundToInt(ph / (2 * Mathf.PI / o.nd)) % o.nd) + o.nd) % o.nd, j = Mathf.Clamp(Mathf.FloorToInt((al - o.a0) / o.da), 0, o.na - 1);
+                                    sMin = Mathf.Max(sMin, (o.T(j, k) + 0.001f) / r);
+                                }
+                            if (sMin > 0f && sMin < 0.98f)
+                            {
+                                Vector3 In(Vector3 p) { var rel = p - o.w; float al = Vector3.Dot(rel, o.ax); return o.w + o.ax * al + (rel - o.ax * al) * sMin; }
+                                foreach (var b in wb) for (int i = 0; i < b.pos.Length; i++) b.pos[i] = In(b.pos[i]);
+                                if (wd.ok) wd = new WristFit.DialPose { ok = true, prefab = wd.prefab, pos = In(wd.pos), rot = wd.rot };
+                            }
+                            Plugin.Log.LogInfo($"[WristAccessories] {(preview ? "preview " : "")}watch {srcW.name} worn as its outfit wears it: face {phi0 * Mathf.Rad2Deg:0} deg, {(aC - srcW.hmid) * 1000:0} mm along the arm (outfit {srcW.src.hid}, {hin} of {hv} head points under this sleeve){(sMin > 0f && sMin < 0.98f ? $", loop drawn in x{sMin:0.00} to sit on this arm" : "")}");
+                        }
+                    }
+                    if (srcW != null)
+                    {
+                        // the other items start past the watch (user 2026-10-29: "move any accessories that could be in the way of the watch"):
+                        // the stack begins 3 mm on the elbow side of the watch's own span on this arm
+                        float wLo = wb.SelectMany(b => b.pos).Min(p => Vector3.Dot(p - o.w, o.ax));
+                        if (wLo - 0.003f < o.start)
+                        {
+                            so = new WristFit.Outline { w = o.w, ax = o.ax, e1 = o.e1, e2 = o.e2, a0 = o.a0, da = o.da, na = o.na, nd = o.nd, tab = o.tab, start = wLo - 0.003f };
+                            Plugin.Log.LogInfo($"[WristAccessories] {(preview ? "preview " : "")}{part}: the other items start past the watch, {so.start * 1000:0} mm from the wrist (was {o.start * 1000:0})");
+                        }
+                    }
+                    else if (part == "L" && fp && string.IsNullOrEmpty(Plugin.Watch.Value) && its.Count > 0)
+                    {
+                        // no watch picked: the OUTFIT's own watch is on this wrist (user shot 2026-10-29: its green watch under the beads and
+                        // chain) - its submeshes (watch materials) baked in the hands' pose now, the stack starts past them
+                        float? lo = OwnWatchLo(hands, boneT, o);
+                        if (lo != null && lo.Value - 0.003f < o.start)
+                        {
+                            so = new WristFit.Outline { w = o.w, ax = o.ax, e1 = o.e1, e2 = o.e2, a0 = o.a0, da = o.da, na = o.na, nd = o.nd, tab = o.tab, start = lo.Value - 0.003f };
+                            Plugin.Log.LogInfo($"[WristAccessories] {part}: the items start past the outfit's own watch, {so.start * 1000:0} mm from the wrist (was {o.start * 1000:0})");
+                        }
+                    }
+                    placed = its.Count > 0 ? WristFit.Stack(its, so, (Plugin.WatchFace.Value == "inner" ? Plugin.InnerAngle.Value : 33f) * Mathf.Deg2Rad)
+                                           : new List<(WristFit.Acc, List<WristFit.Built>, float, float, int, WristFit.DialPose)>();
+                    if (srcW != null) placed.Insert(0, (srcW, wb, float.NaN, float.NaN, 1, wd));
                     foreach (var sk in WristFit.Skipped) Plugin.Log.LogInfo($"[WristAccessories] {(preview ? "preview " : "")}{part}: not worn, sleeve too wide for {sk}");
                     if (part == "L" && WristFit.Skipped.Any(x => x.StartsWith((Plugin.Watch.Value ?? "-") + " ")))
                     { RestoreOutfitWatch(); Plugin.Log.LogInfo("[WristAccessories] picked watch does not fit this sleeve: the outfit's own watch stays"); }
@@ -260,15 +391,37 @@ class WristRig : MonoBehaviour
                     var go = new GameObject("WristAcc_" + part + "_" + acc.name);
                     go.transform.SetParent(boneT, false);
                     go.layer = hands.GetRenderers().First().gameObject.layer;
-                    int parts = 0, swings = 0;
+                    int parts = 0, swings = 0, tagNo = 0, doubled = 0;
                     var src = new Dictionary<Mesh, WristFit.Built>();
-                    foreach (var b in built)
+                    foreach (var b0 in built)
                     {
+                        // a hanging tag: the dogtag picked for it on the DOGTAGS page (DogTags.cs), else the sleeve's own
+                        var b = b0.swing != null && b0.swing.Length == 2 && DogTags.Sleeves.Contains(acc.name) ? DogTags.Swap(b0, tagNo++, o, acc.name) ?? b0 : b0;   // only the kill sleeves' / dogtag chains' tags (pendants like the horse hang the same way)
                         var mats = Materials(b.bundle, b.mesh);
                         var mesh = new Mesh { name = acc.name + "_" + b.mesh };
-                        mesh.vertices = b.pos; mesh.normals = b.nrm; mesh.tangents = b.tan; mesh.uv = b.uv;
-                        mesh.subMeshCount = b.tris.Length;
-                        for (int s = 0; s < b.tris.Length; s++) mesh.SetTriangles(b.tris[s], s);
+                        if (Plugin.DoubleSided.Value)
+                        {
+                            // both sides drawn (user shot 2026-10-28, USEC Aggressor TAC watch "not culled properly"): straps and
+                            // bands cut from outfits are one-sided surfaces - where one stands off the sleeve, its inside is culled
+                            // and the strap looks hollow. A back copy of every face (reversed, normals turned) fills that in.
+                            int nv = b.pos.Length;
+                            mesh.vertices = b.pos.Concat(b.pos).ToArray(); mesh.normals = b.nrm.Concat(b.nrm.Select(v => -v)).ToArray();
+                            mesh.tangents = b.tan.Concat(b.tan.Select(t => new Vector4(-t.x, -t.y, -t.z, t.w))).ToArray(); mesh.uv = b.uv.Concat(b.uv).ToArray();
+                            mesh.subMeshCount = b.tris.Length;
+                            for (int s = 0; s < b.tris.Length; s++)
+                            {
+                                var t = b.tris[s]; var tt = new int[t.Length * 2]; Array.Copy(t, tt, t.Length);
+                                for (int q = 0; q < t.Length; q += 3) { tt[t.Length + q] = t[q] + nv; tt[t.Length + q + 1] = t[q + 2] + nv; tt[t.Length + q + 2] = t[q + 1] + nv; }
+                                mesh.SetTriangles(tt, s);
+                            }
+                            doubled++;
+                        }
+                        else
+                        {
+                            mesh.vertices = b.pos; mesh.normals = b.nrm; mesh.tangents = b.tan; mesh.uv = b.uv;
+                            mesh.subMeshCount = b.tris.Length;
+                            for (int s = 0; s < b.tris.Length; s++) mesh.SetTriangles(b.tris[s], s);
+                        }
                         mesh.RecalculateBounds(); src[mesh] = b;
                         var child = new GameObject(b.mesh); child.transform.SetParent(go.transform, false); child.layer = go.layer;
                         child.AddComponent<MeshFilter>().sharedMesh = mesh;
@@ -295,7 +448,7 @@ class WristRig : MonoBehaviour
                         }
                         catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] {acc.name} moving hands: {e.Message}"); }
                     }
-                    if (!preview && (part == "L" || part == "R")) { LiveChecks.Add((hands, boneT, o, acc.name, hid, part, lo, hi)); LiveArmCheck(hands, boneT, o, acc.name, hid, part, lo, hi, "built"); }
+                    if (!preview && (part == "L" || part == "R") && !float.IsNaN(lo)) { LiveChecks.Add((hands, boneT, o, acc.name, hid, part, lo, hi)); LiveArmCheck(hands, boneT, o, acc.name, hid, part, lo, hi, "built"); }
                     if (!preview && part == "L" && acc.fitR > 0 && MainWatchName == null && WristFit.FaceAngle.TryGetValue(acc.name, out float fa))
                     {
                         MainWatchFace = fa; MainWatchName = acc.name;
@@ -312,9 +465,15 @@ class WristRig : MonoBehaviour
                     }
                     _objs.Add(go);
                     { var wc = go.AddComponent<HandWear.Check>(); wc.Who = (preview ? "preview " : "") + part; wc.Name = acc.name; wc.Palm = boneT; wc.Ref = "the wrist bone"; wc.MaxSize = 0.6f; wc.MaxAway = 0.35f; }
-                    Plugin.Log.LogInfo($"[WristAccessories] {(preview ? "preview " : "")}{part}: {acc.name} at {lo * 1000:0}..{hi * 1000:0} mm from the wrist, {turns} turn(s), {parts} mesh(es){(swings > 0 ? $", {swings} hanging" : "")}, outline {how}");
+                    Plugin.Log.LogInfo($"[WristAccessories] {(preview ? "preview " : "")}{part}: {acc.name} at {lo * 1000:0}..{hi * 1000:0} mm from the wrist, {turns} turn(s), {parts} mesh(es){(swings > 0 ? $", {swings} hanging" : "")}{(doubled > 0 ? $", {doubled} drawn on both sides" : "")}, outline {how}");
                 }
             }
+            // everything this rig draws, by object and mesh (user 2026-10-28: claws round the wrist from an unknown piece)
+            if (!preview)
+                foreach (var go in _objs.Where(x => x != null))
+                    Plugin.Log.LogInfo($"[WristAccessories] drawn by us: {go.name} on {(go.transform.parent != null ? go.transform.parent.name : "-")}: " +
+                        string.Join(", ", go.GetComponentsInChildren<Renderer>(true).Select(r => { var m = r is SkinnedMeshRenderer s ? s.sharedMesh : r.GetComponent<MeshFilter>()?.sharedMesh;
+                            return $"{r.name} [{(m != null ? m.name + " " + m.vertexCount + "v" : "no mesh")}, {string.Join("/", r.sharedMaterials.Select(x => x != null ? x.name : "null"))}{(r.enabled ? "" : ", off")}]"; })));
         }
         catch (Exception e) { Plugin.Log.LogError("[WristAccessories] wrists: " + e); }
         finally { _busy = false; }
@@ -324,6 +483,33 @@ class WristRig : MonoBehaviour
     // ---- diagnostic: the arm as the game draws it right now (skinned mesh baked in its current pose) vs the offline outline ----
     /// <summary>The main player's placed wrist items (first person), re-measured on every timer key press (WatchAnimsCompat).</summary>
     public static readonly List<(LoddedSkin hands, Transform bone, WristFit.Outline o, string acc, string hid, string part, float lo, float hi)> LiveChecks = new List<(LoddedSkin, Transform, WristFit.Outline, string, string, string, float, float)>();
+    /// <summary>The elbow-side end of the outfit's own watch on this arm (along o.ax from o.w), from its submeshes (watch materials)
+    /// in the hands' current pose; null = the outfit has no watch there.</summary>
+    static float? OwnWatchLo(LoddedSkin hands, Transform bone, WristFit.Outline o)
+    {
+        try
+        {
+            float? lo = null; int n = 0;
+            foreach (var smr in hands.GetRenderers().OfType<SkinnedMeshRenderer>())
+            {
+                var mats = smr.sharedMaterials; if (smr.sharedMesh == null) continue;
+                var subs = Enumerable.Range(0, Math.Min(mats.Length, smr.sharedMesh.subMeshCount)).Where(i => mats[i] != null && WatchWords.Any(x => mats[i].name.ToLowerInvariant().Contains(x))).ToList();
+                if (subs.Count == 0) continue;
+                var baked = new Mesh(); smr.BakeMesh(baked, true); var vs = baked.vertices; var M = bone.worldToLocalMatrix * smr.transform.localToWorldMatrix;
+                foreach (var s in subs)
+                    foreach (var vi in baked.GetTriangles(s).Distinct())
+                    {
+                        float a = Vector3.Dot(M.MultiplyPoint3x4(vs[vi]) - o.w, o.ax);
+                        if (Mathf.Abs(Vector3.Dot(M.MultiplyPoint3x4(vs[vi]) - o.w, o.ax)) < 0.15f) { lo = lo == null ? a : Mathf.Min(lo.Value, a); n++; }
+                    }
+                Destroy(baked);
+            }
+            if (lo != null) Plugin.Log.LogInfo($"[WristAccessories] outfit's own watch: {n} points, reaches {lo.Value * 1000:0} mm from the wrist");
+            return lo;
+        }
+        catch (Exception e) { Plugin.Log.LogError("[WristAccessories] outfit's own watch: " + e.Message); return null; }
+    }
+
     public static void RunLiveChecks(string why) { foreach (var c in LiveChecks) if (c.hands != null && c.bone != null) LiveArmCheck(c.hands, c.bone, c.o, c.acc, c.hid, c.part, c.lo, c.hi, why); }
 
     static void LiveArmCheck(LoddedSkin hands, Transform bone, WristFit.Outline o, string acc, string hid, string part, float lo, float hi, string why)

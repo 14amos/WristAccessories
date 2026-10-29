@@ -24,16 +24,16 @@ namespace WristAccessories;
 // postfix there swaps in the accessory picked in F12. Fit on hands it wasn't made for: the accessory's placement is
 // taken relative to the wrist frame of the hands it ships with and re-applied to the worn hands' wrist frame
 // (wrist_frames.json, measured offline from every hands mesh in LForearm3 bone space), scaled by the wrist radius ratio.
-[BepInPlugin("com.amos.wristaccessories", "WristAccessories", "1.0.6")]
+[BepInPlugin("com.amos.wristaccessories", "WristAccessories", "1.1.0")]
 [BepInDependency("com.manimal.watchanims", BepInDependency.DependencyFlags.SoftDependency)]
 public class Plugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
     internal static ConfigEntry<bool> Enabled;
     internal static ConfigEntry<string> Accessory;   // "" = outfit default, "none", or a watch prefab path
-    internal static ConfigEntry<string> PresetLoads, LeftWrist, RightWrist, RingHand, Watch, WatchFace, WatchWrist, ItemAngles, Handwear, ItemSlides, Shoes;
+    internal static ConfigEntry<string> TattooSizes, PresetLoads, LeftWrist, RightWrist, RingHand, Watch, WatchFace, WatchWrist, ItemAngles, Handwear, ItemSlides, Shoes, DogTagPicks, DogTagFlips, WatchWorn;
     internal static ConfigEntry<float> SleeveFit, PhysicsStrength, InnerAngle;
-    internal static ConfigEntry<bool> SeamBlend, BraceletPhysicsOn, CleanWatchShadow, Straighten, OnScav, MatchSkinTone, WatchesInSlots, EveryShoe;
+    internal static ConfigEntry<bool> SeamBlend, BraceletPhysicsOn, CleanWatchShadow, Straighten, OnScav, MatchSkinTone, WatchesInSlots, EveryShoe, DoubleSided;
     internal static ConfigEntry<float> SkinShade;
     internal static ConfigEntry<int> LooseSize;   // Watch: "" = the outfit's own, "none", or a watch_* layout   // fitted accessories (WristFit): names from wrist toward elbow
     static string _dir, _nudgePath;
@@ -60,15 +60,13 @@ public class Plugin : BaseUnityPlugin
         try { if (File.Exists(_nudgePath)) Nudges = JsonConvert.DeserializeObject<Dictionary<string, Nudge>>(File.ReadAllText(_nudgePath)) ?? new(); }
         catch (Exception e) { Log.LogError("[WristAccessories] nudges: " + e.Message); }
 
-        Enabled = Config.Bind("1. Wrist", "Enabled", true, new ConfigDescription("Use the accessory picked below instead of the outfit's own watch.", null, new ConfigurationManagerAttributes { Order = 3 }));
-        Accessory = Config.Bind("1. Wrist", "Accessory", "", new ConfigDescription("Watch / bracelet on the left wrist, for every outfit (first person only, like the game's own watches).", null,
-            new ConfigurationManagerAttributes { Order = 2, CustomDrawer = DrawAccessory, HideDefaultButton = true }));
-        Config.Bind("1. Wrist", "Fit for the hands you wear", "", new ConfigDescription("Nudge the accessory on the outfit you are wearing now (saved per outfit).", null,
-            new ConfigurationManagerAttributes { Order = 1, CustomDrawer = DrawNudge, HideDefaultButton = true }));
+        // the old "1. Wrist" options (Accessory = a mod watch prefab in the outfit watch's place, e.g. the Sacred Amulet bracelet; per-outfit
+        // nudges) are gone (user 2026-10-29): the WARDROBE tab covers them - the Sacred Amulet is its "amulet" wrist item
         Watch = Config.Bind("2. Fitted accessories", "Watch", "", "Replace the outfit's watch: empty = the outfit's own, none, or one of the outfits' watches (watch_*, named after the outfit they come from in the WATCH row), fitted to your sleeve");
         Watch.SettingChanged += (_, __) => _reapplyAt = Time.unscaledTime + 0.2f;
         SleeveFit = Config.Bind("2. Fitted accessories", "Sleeve fit", 0.25f, new ConfigDescription("How much room accessories leave for the sleeve bulging when the wrist bends: 0 = tight on the arm at rest, 1 = clear of every wrist pose", new AcceptableValueRange<float>(0f, 1f)));
         Straighten = Config.Bind("2. Fitted accessories", "Straighten outfit bracelets", true, "Bracelets taken from outfits go straight round the arm and close (off: the slant and gaps they had on their source outfit)");
+        DoubleSided = Config.Bind("2. Fitted accessories", "Draw both sides", true, "Straps and bands are drawn from both sides, so a strap standing off your sleeve does not look hollow from behind (off: one side, as the outfits draw them)");
         OnScav = Config.Bind("2. Fitted accessories", "On your scav", true, "Wear your accessories, handwear and watch picks on your scav too (off: the scav keeps its outfit as the game made it)");
         MatchSkinTone = Config.Bind("2. Fitted accessories", "Match skin tone", true, "Handwear from other outfits (hands, fingerless gloves): its skin is recoloured to your own hands' skin tone");
         SeamBlend = Config.Bind("2. Fitted accessories", "Blend the wrist seam", true, "A bare hand from another outfit: your own wrist and hand stay up to where it starts, its edge tucks under your skin and its skin takes your colour at the seam (WORK IN PROGRESS)");
@@ -83,9 +81,14 @@ public class Plugin : BaseUnityPlugin
         InnerAngle = Config.Bind("2. Fitted accessories", "Inner wrist angle", -161f, new ConfigDescription("Where an inner-wrist watch sits round the arm, degrees from the back of the hand (the game's inner watches: -140..-175)", new AcceptableValueRange<float>(-215f, -100f)));
         Handwear = Config.Bind("2. Fitted accessories", "Handwear", "", "Gloves, other outfits' hands and hand tape on your hands (comma list of handwear names, set in the ACCESSORIES tab's HANDS row)");
         Shoes = Config.Bind("2. Fitted accessories", "Shoes", "", "Another outfit's shoes on your feet (a shoes_* name, set in the ACCESSORIES tab's SHOES tile); empty = your own");
+        DogTagPicks = Config.Bind("2. Fitted accessories", "Dogtags", "", "The 8 hanging tags of the kill sleeves / dogtag chains: dogtag item bundles separated by |, empty = the sleeve's own tag (set in the WARDROBE's DOGTAGS tab)");
+        DogTagFlips = Config.Bind("2. Fitted accessories", "Dogtag flips", "", "Per hanging tag (1..8): 1 = turned over, the back outward (set with FLIP on the WARDROBE's DOGTAGS tab)");
         PresetLoads = Config.Bind("2. Fitted accessories", "Preset loads", "all", new ConfigDescription("What loading a WARDROBE preset puts on: all (with your clothing), the wrist (items, watch, ring), the hands (other hands, gloves, tattoos) or the clothing (upper, lower)", new AcceptableValueList<string>("all", "wrist", "hands", "clothing")));
+        TattooSizes = Config.Bind("2. Fitted accessories", "Tattoo sizes", "", "Each tattoo's size in percent over its automatic size (matched to your hand / arm): name=pct;name=pct (WARDROBE row TATTOO SIZE)");
+        TattooSizes.SettingChanged += (_, __) => _reapplyAt = Time.unscaledTime + 0.3f;
         ItemSlides = Config.Bind("2. Fitted accessories", "Item slides", "", "Each item moved along the arm in mm, + toward the hand, - toward the elbow, name=mm;name=mm (the ACCESSORIES tab's SLIDE row)");
         ItemAngles = Config.Bind("2. Fitted accessories", "Item angles", "", "Each item's own turn round the arm in degrees, name=deg;name=deg (set in the ACCESSORIES tab: ANGLE OF / ANGLE)");
+        WatchWorn = Config.Bind("2. Fitted accessories", "Watch worn", "outfit", new ConfigDescription("outfit: the watch sits exactly where its own outfit wears it (strap on the skin, the sleeve worn now covers it); fit: around the outside of your sleeve, face where Watch face says", new AcceptableValueList<string>("outfit", "fit")));
         WatchFace = Config.Bind("2. Fitted accessories", "Watch face", "back", new ConfigDescription("Where the face of every fitted watch sits: back of the wrist, or the inner wrist (the way some outfits wear theirs)", new AcceptableValueList<string>("back", "inner")));
         LeftWrist = Config.Bind("2. Fitted accessories", "Left wrist", "", "Game items worn on the left forearm, from the wrist toward the elbow, comma-separated: " +
             "rolex, chainlet, chain_gold, prokill, dogtag, paracord, amulet. Fitted to the outfit's sleeve (no clipping), first person only.");
@@ -98,8 +101,6 @@ public class Plugin : BaseUnityPlugin
             if ((RingHand.Value ?? "none") == "none") { if (oldRings.Value.Contains("L4=fring_skullring")) RingHand.Value = "left"; else if (oldRings.Value.Contains("R4=fring_skullring")) RingHand.Value = "right"; }
             Log.LogInfo($"[WristAccessories] old finger rings '{oldRings.Value}' dropped (hands view removed); RING = {RingHand.Value}"); oldRings.Value = "";
         }
-        Enabled.SettingChanged += (_, __) => _reapplyAt = Time.unscaledTime + 0.2f;
-        Accessory.SettingChanged += (_, __) => _reapplyAt = Time.unscaledTime + 0.2f;
 
         var h = new Harmony("com.amos.wristaccessories");
         h.Patch(AccessTools.Method(typeof(CustomizationSolver), nameof(CustomizationSolver.GetWatchBundle)), postfix: new HarmonyMethod(typeof(Plugin), nameof(GetWatchBundlePostfix)));
@@ -110,12 +111,13 @@ public class Plugin : BaseUnityPlugin
         gameObject.AddComponent<WristRig>();
         foreach (var init in AccessTools.GetDeclaredMethods(typeof(PlayerBody)).Where(m => m.Name == "Init"))
             h.Patch(init, postfix: new HarmonyMethod(typeof(Plugin), nameof(BodyInitPostfix)));
-        Log.LogInfo($"[WristAccessories] loaded: {Frames.Count} wrist frames, {Nudges.Count} saved nudges, accessory '{Accessory.Value}'");
+        Log.LogInfo($"[WristAccessories] loaded: {Frames.Count} wrist frames (old 1. Wrist options removed)");
     }
 
     void Update()
     {
         if (_reapplyAt > 0 && Time.unscaledTime >= _reapplyAt) { _reapplyAt = -1; _ = Reapply(); }
+        HandWear.FlushTattooSize();
         if (_saveAt > 0 && Time.unscaledTime >= _saveAt) { _saveAt = -1; try { File.WriteAllText(_nudgePath, JsonConvert.SerializeObject(Nudges, Formatting.Indented)); } catch (Exception e) { Log.LogError("[WristAccessories] save: " + e.Message); } }
     }
 
@@ -173,41 +175,12 @@ public class Plugin : BaseUnityPlugin
     }
 
     // ---- the swap ----
+    // a watch picked in WARDROBE: the outfit's own moving-hands watch prefab is not put on (its case is hidden by WristRig)
     static void GetWatchBundlePostfix(MongoID templateId, ref WatchBundleInfo __result)
     {
         try
         {
-            if (!Enabled.Value) return;
-            if (!string.IsNullOrEmpty(Watch.Value) && Templates != null && Templates.TryGetValue(templateId, out var tw) && tw.BodyPart == EBodyModelPart.Hands) { __result = default; return; }
-            string sel = Accessory.Value ?? "", hid = templateId.ToString();
-            var t = Templates; if (t == null || !t.TryGetValue(templateId, out var tpl) || tpl.BodyPart != EBodyModelPart.Hands) return;
-            if (sel == "none") { __result = default; return; }
-            Acc acc = null;
-            if (sel != "") { EnsureCatalog(); acc = Catalog?.FirstOrDefault(a => a.Path == sel); if (acc == null) return; }
-            if (acc == null && !__result.HasValidPath()) return;          // outfit default and the outfit has no watch
-            string path = acc?.Path ?? __result.WatchPrefab.path;
-            Vector3 pos; Quaternion rot; float scale = 1f; string how;
-            Frames.TryGetValue(hid, out var fh);
-            if (acc == null || tpl.WatchPrefab?.path == path) { pos = tpl.WatchPosition; rot = Quaternion.Euler(tpl.WatchRotation); how = "outfit's own placement"; }
-            else if (fh != null && Frames.TryGetValue(acc.RefHands ?? "", out var fr))
-            {
-                Quaternion qr = Q(fr), qh = Q(fh); float s = fh.r / fr.r;
-                Vector3 rel = Quaternion.Inverse(qr) * (acc.RefPos - V(fr.o));
-                pos = V(fh.o) + qh * (rel * s); rot = qh * (Quaternion.Inverse(qr) * Quaternion.Euler(acc.RefRot));
-                if (acc.Bracelet) scale = s;
-                how = $"wrist fit from {fr.name} (r {fr.r:0.000}) to {fh.name} (r {fh.r:0.000})";
-            }
-            else if (!string.IsNullOrEmpty(tpl.WatchPrefab?.path)) { pos = tpl.WatchPosition; rot = Quaternion.Euler(tpl.WatchRotation); how = "outfit's watch spot (no wrist frame)"; }
-            else { pos = acc.RefPos; rot = Quaternion.Euler(acc.RefRot); how = "accessory's own placement (no wrist frame)"; }
-            if (Nudges.TryGetValue(hid, out var n))
-            {
-                Quaternion basis = fh != null ? Q(fh) : Quaternion.identity;
-                pos += basis * new Vector3(n.px, n.py, n.pz) * 0.001f;
-                rot = rot * Quaternion.Euler(n.rx, n.ry, n.rz); scale *= n.s <= 0 ? 1f : n.s;
-            }
-            __result = new WatchBundleInfo { WatchPrefab = new ResourceKey { path = path, rcid = "" }, WatchPosition = pos, WatchRotation = rot.eulerAngles };
-            ScaleByPose[Key(pos)] = scale;
-            if (Logged.Add(hid + path + Key(pos))) Log.LogInfo($"[WristAccessories] hands {hid}: {Pretty(path)}, {how}, pos {pos.ToString("F4")} rot {rot.eulerAngles.ToString("F1")} scale {scale:0.00}");
+            if (!string.IsNullOrEmpty(Watch.Value) && Templates != null && Templates.TryGetValue(templateId, out var tw) && tw.BodyPart == EBodyModelPart.Hands) __result = default;
         }
         catch (Exception e) { Log.LogError("[WristAccessories] GetWatchBundle: " + e); }
     }

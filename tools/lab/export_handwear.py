@@ -46,6 +46,37 @@ for pk in picks:
     S = pk["side"]
     if pk["kind"] == "hand":
         keep = [s[(hw[s].mean(1) > 0.35) & (side[s] == S).all(1)] for s in subs]
+        # holes (user 2026-10-28: "some have gaps in them"): a triangle inside the hand but weighted mostly to the forearm
+        # (knuckle / back-of-hand / cuff faces) fell under 0.35 and left a hole. Fill every patch of dropped triangles that
+        # the kept ones enclose: connected (by welded edges) dropped triangles whose every neighbour is kept or in the patch.
+        allT = np.concatenate(subs); tsub = np.concatenate([np.full(len(s), i) for i, s in enumerate(subs)])
+        kmask = np.concatenate([(hw[s].mean(1) > 0.35) & (side[s] == S).all(1) for s in subs])
+        wk = np.round(P / 1e-5).astype(np.int64); _, wv = np.unique(wk, axis=0, return_inverse=True); wv = wv.ravel()
+        Tw = wv[allT]; emap = collections.defaultdict(list)
+        for ti, t_ in enumerate(Tw):
+            for a, b in ((t_[0], t_[1]), (t_[1], t_[2]), (t_[2], t_[0])): emap[(min(a, b), max(a, b))].append(ti)
+        nb = collections.defaultdict(set)
+        for ts in emap.values():
+            for x in ts:
+                for y in ts:
+                    if x != y: nb[x].add(y)
+        seen = set(); filled = 0; patches = 0
+        for t0 in np.where(~kmask)[0]:
+            if t0 in seen: continue
+            comp, st, touches = [], [int(t0)], False
+            while st:
+                x = st.pop()
+                if x in seen: continue
+                seen.add(x); comp.append(x)
+                for y in nb[x]:
+                    if kmask[y]: touches = True
+                    elif y not in seen: st.append(y)
+            # a hole is closed all round: none of its edges is an open mesh border (a cuff strip / loose flap at the wrist is)
+            border = any(len(emap[(min(a, b), max(a, b))]) == 1 for x in comp for a, b in ((Tw[x][0], Tw[x][1]), (Tw[x][1], Tw[x][2]), (Tw[x][2], Tw[x][0])))
+            if touches and not border and len(comp) <= 400:                  # bigger = the rest of the body, not a hole
+                kmask[comp] = True; filled += len(comp); patches += 1
+        keep = [allT[kmask & (tsub == i)] for i in range(len(subs))]
+        print(f"  {pk['name']}: holes filled {patches} ({filled} triangles)")
     else:
         # the piece: welded pieces of the hand's triangles (as scan_hands.py), the side's extras in the same order
         T = np.concatenate([s[hw[s].mean(1) > 0.5] for s in subs]); tsub = np.concatenate([np.full((hw[s].mean(1) > 0.5).sum(), i) for i, s in enumerate(subs)])
