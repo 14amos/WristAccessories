@@ -43,7 +43,7 @@ In game (first person):
 
 The WARDROBE tab:
 
-![WARDROBE tab](docs/images/wardrobe_tab.jpg)
+![WARDROBE tab](docs/images/dogtags_tab.jpg)
 
 Every wrist item and watch in the release (each outfit's bracelets also come one by one):
 
