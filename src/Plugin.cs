@@ -24,18 +24,20 @@ namespace WristAccessories;
 // postfix there swaps in the accessory picked in F12. Fit on hands it wasn't made for: the accessory's placement is
 // taken relative to the wrist frame of the hands it ships with and re-applied to the worn hands' wrist frame
 // (wrist_frames.json, measured offline from every hands mesh in LForearm3 bone space), scaled by the wrist radius ratio.
-[BepInPlugin("com.amos.wristaccessories", "WristAccessories", "1.2.0")]
-[BepInDependency("com.manimal.watchanims", BepInDependency.DependencyFlags.SoftDependency)]
+[BepInPlugin("com.amos.wristaccessories", "WristAccessories", "1.3.0")]
+// no BepInDependency on Manimal-WatchAnims (1.2.1, Stance Overhaul report): the soft dependency made BepInEx load his plugin
+// before Fontaine's Stance Overhaul, and in that order high ready / low ready broke (user test 2026-10-30: broken with every WA
+// part switched off, fine once only the order changed). The compat hooks him in Start instead (every plugin's Awake has run).
 public class Plugin : BaseUnityPlugin
 {
     internal static ManualLogSource Log;
     internal static ConfigEntry<bool> Enabled;
     internal static ConfigEntry<string> Accessory;   // "" = outfit default, "none", or a watch prefab path
-    internal static ConfigEntry<string> TattooSizes, PresetLoads, LeftWrist, RightWrist, RingHand, Watch, WatchFace, WatchWrist, ItemAngles, Handwear, ItemSlides, Shoes, DogTagPicks, DogTagFlips, WatchWorn;
+    internal static ConfigEntry<string> TattooSizes, PresetLoads, LeftWrist, RightWrist, RingHand, Rings, Watch, WatchFace, WatchWrist, ItemAngles, Handwear, ItemSlides, Shoes, DogTagPicks, DogTagFlips, WatchWorn;
     internal static ConfigEntry<float> SleeveFit, PhysicsStrength, InnerAngle;
-    internal static ConfigEntry<bool> SeamBlend, BraceletPhysicsOn, CleanWatchShadow, Straighten, OnScav, MatchSkinTone, WatchesInSlots, EveryShoe, DoubleSided, HandsAsSet, PerProfile;
+    internal static ConfigEntry<bool> SeamBlend, SoftInk, BraceletPhysicsOn, CleanWatchShadow, Straighten, OnScav, MatchSkinTone, WatchesInSlots, EveryShoe, DoubleSided, HandsAsSet, PerProfile;
     internal static ConfigEntry<string> QuickUnequip;
-    internal static ConfigEntry<float> SkinShade;
+    internal static ConfigEntry<float> SkinShade, TattooDark;
     internal static ConfigEntry<int> LooseSize;   // Watch: "" = the outfit's own, "none", or a watch_* layout   // fitted accessories (WristFit): names from wrist toward elbow
     static string _dir, _nudgePath;
     internal static Dictionary<string, Frame> Frames = new();
@@ -72,6 +74,8 @@ public class Plugin : BaseUnityPlugin
         MatchSkinTone = Config.Bind("2. Fitted accessories", "Match skin tone", true, "Handwear from other outfits (hands, fingerless gloves): its skin is recoloured to your own hands' skin tone");
         SeamBlend = Config.Bind("2. Fitted accessories", "Blend the wrist seam", true, "A bare hand from another outfit: your own wrist and hand stay up to where it starts, its edge tucks under your skin and its skin takes your colour at the seam (WORK IN PROGRESS)");
         SkinShade = Config.Bind("2. Fitted accessories", "Skin shade", 0f, new ConfigDescription("Handwear skin made lighter (+) or darker (-) than the matched tone, percent", new AcceptableValueRange<float>(-50f, 50f)));
+        SoftInk = Config.Bind("2. Fitted accessories", "Soft tattoo edges", true, "Tattoo ink fades out at its edges (off: hard cut-out edges, as before 1.3.0)");
+        TattooDark = Config.Bind("2. Fitted accessories", "Tattoo darkness", 0f, new ConfigDescription("Tattoo ink made darker, percent (0 = as the outfit has it)", new AcceptableValueRange<float>(0f, 80f)));
         CleanWatchShadow = Config.Bind("2. Fitted accessories", "Clean skin under a replaced watch", true, "When the outfit's own watch is hidden, take its shadow (painted into the skin texture) off the wrist");
         BraceletPhysicsOn = Config.Bind("3. Bracelet physics", "Enabled", true, "Loose bracelets (the \"(loose)\" entries) hang and slide on the arm");
         PhysicsStrength = Config.Bind("3. Bracelet physics", "Strength", 1f, new ConfigDescription("How strongly gravity and arm swings move loose bracelets", new AcceptableValueRange<float>(0f, 2f)));
@@ -99,24 +103,34 @@ public class Plugin : BaseUnityPlugin
         QuickUnequip = Config.Bind("2. Fitted accessories", "Quick unequip click", "middle", new ConfigDescription("Clicking a WARDROBE tile with this mouse button takes off what it holds (back to your own / none)", new AcceptableValueList<string>("middle", "right", "off")));
         PerProfile = Config.Bind("2. Fitted accessories", "Picks per profile", true, "Every game profile keeps its own WARDROBE picks (off: one set of picks for every profile, as before 1.2.0)");
         RingHand = Config.Bind("2. Fitted accessories", "Gold skull ring", "none", new ConfigDescription("Ring finger of which hand", new AcceptableValueList<string>("none", "left", "right")));
-        // 1.1.0 test builds kept the skull ring as a finger ring (setting "Rings", hands view - removed, user 2026-10-27): back to RING
-        var oldRings = Config.Bind("2. Fitted accessories", "Rings", "", "(1.1.0 test builds only, not used)");
-        if (!string.IsNullOrEmpty(oldRings.Value))
+        // FINGERS tab (user 2026-10-30, back from the 1.1.0 hands-view build): rings on any finger; the old RING setting (skull ring
+        // on the ring finger) moves onto L4 / R4 once
+        Rings = Config.Bind("2. Fitted accessories", "Rings", "", "Rings on any finger: finger=ring;... (L1 left thumb .. L5 left little finger, R1..R5; set on the WARDROBE FINGERS tab)");
+        if (RingHand.Value == "left" || RingHand.Value == "right")
         {
-            if ((RingHand.Value ?? "none") == "none") { if (oldRings.Value.Contains("L4=fring_skullring")) RingHand.Value = "left"; else if (oldRings.Value.Contains("R4=fring_skullring")) RingHand.Value = "right"; }
-            Log.LogInfo($"[WristAccessories] old finger rings '{oldRings.Value}' dropped (hands view removed); RING = {RingHand.Value}"); oldRings.Value = "";
+            string fk = RingHand.Value == "left" ? "L4" : "R4";
+            var l = (Rings.Value ?? "").Split(';').Where(x => x.Length > 0 && !x.StartsWith(fk + "=")).ToList(); l.Add(fk + "=fring_skullring");
+            Rings.Value = string.Join(";", l);
+            Log.LogInfo($"[WristAccessories] RING '{RingHand.Value}' moved to the finger rings: {fk} = gold skull ring"); RingHand.Value = "none";
         }
 
         var h = new Harmony("com.amos.wristaccessories");
         h.Patch(AccessTools.Method(typeof(CustomizationSolver), nameof(CustomizationSolver.GetWatchBundle)), postfix: new HarmonyMethod(typeof(Plugin), nameof(GetWatchBundlePostfix)));
         h.Patch(AccessTools.Method(typeof(PlayerBody), nameof(PlayerBody.SetWatches)), postfix: new HarmonyMethod(typeof(Plugin), nameof(SetWatchesPostfix)));
-        WatchAnimsCompat.TryPatch(h);
+        _harmony = h;                                                       // WatchAnimsCompat hooks in Start
         AccessoriesTab.Patch(h);
         WristFit.Load(_dir);
         gameObject.AddComponent<WristRig>();
         foreach (var init in AccessTools.GetDeclaredMethods(typeof(PlayerBody)).Where(m => m.Name == "Init"))
             h.Patch(init, postfix: new HarmonyMethod(typeof(Plugin), nameof(BodyInitPostfix)));
         Log.LogInfo($"[WristAccessories] loaded: {Frames.Count} wrist frames (old 1. Wrist options removed)");
+    }
+
+    Harmony _harmony;
+    void Start()
+    {
+        WatchAnimsCompat.TryPatch(_harmony);
+        Log.LogInfo("[WristAccessories] plugin order: no dependency on Manimal-WatchAnims (Stance Overhaul fix), his compat hooked from Start");
     }
 
     void Update()

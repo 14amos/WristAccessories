@@ -17,8 +17,9 @@ static partial class HandWear
 {
     public class Item
     {
-        public string name, note, kind, side, bundle, mesh, dir; public string[] bones; public Matrix4x4[] bind; public int n; public Color? skin; public int fit; public bool rare; public bool inkAll; public float[] seamD0; public bool noTone, press;
+        public string name, note, kind, side, bundle, mesh, dir; public string[] bones; public Matrix4x4[] bind; public int n; public Color? skin; public int fit; public bool rare; public bool inkAll; public float[] seamD0; public bool noTone, press, keepSkin; public string finger;   // finger: a FINGERS-tab mark (L1..R5), not a HAND 1/2 piece
         public Vector3[] pos, nrm; public Vector4[] tan; public Vector2[] uv; public BoneWeight[] bw; public List<(string mat, int sub, int[] tris)> subs;
+        public Dictionary<string, (string bone, Vector3[] pos, Vector3[] nrm)> fingers;   // kind "fring": the ring seated on every finger (L1 thumb .. R5 little), in that finger bone's space
     }
     public static readonly Dictionary<string, Item> Items = new Dictionary<string, Item>();
 
@@ -54,6 +55,20 @@ static partial class HandWear
                 Plugin.Log.LogInfo($"[WristAccessories] shoes: own-boot tables of {PantsData.Count} pants meshes ({PantsData.Values.Count(x => x.legs.Count > 0)} with fit profiles) from {accDir}");
             }
             catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] shoe_profiles.json: {e.Message}"); }
+        // the watch baked into third-person tops (1.2.1, user 2026-10-30: the WARDROBE preview showed the picked watch AND the top's own):
+        // per top mesh (every LOD) the triangles of its watch, from the offline labels (lab/top_watch: islands per top, checked by eye)
+        // every top_watch*.json: the main table (game + mod outfits' tops, all variants CR/AR/base and LODs) and per-addon extras
+        foreach (var wf in Directory.Exists(accDir) ? Directory.GetFiles(accDir, "top_watch*.json") : new string[0])
+            try
+            {
+                foreach (var p in JObject.Parse(File.ReadAllText(wf)).Properties())
+                {
+                    var o = (JObject)p.Value;
+                    TopWatch[p.Name] = new TopCut { subs = o["subs"].ToObject<int[]>(), verts = (int)o["verts"], tris = I((string)o["tris"]), top = (string)o["top"] };
+                }
+                Plugin.Log.LogInfo($"[WristAccessories] top watch: baked-watch tables of {TopWatch.Count} top meshes so far, from {Path.GetFileName(wf)}");
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] {Path.GetFileName(wf)}: {e.Message}"); }
         if (!Directory.Exists(accDir)) return; int n = 0;
         foreach (var f in Directory.GetFiles(accDir, "hw_*.json"))
         {
@@ -61,7 +76,22 @@ static partial class HandWear
             {
                 var j = JObject.Parse(File.ReadAllText(f)); var it = new Item { name = (string)j["name"], note = (string)j["note"], kind = (string)j["kind"], side = (string)j["side"], bundle = BundleKey((string)j["bundle"]), mesh = (string)j["mesh"], dir = accDir, n = (int)j["n"] };
                 it.fit = (int?)j["fit"] ?? 0; it.rare = (bool?)j["rare"] ?? false;
-                it.noTone = (bool?)j["no_tone"] ?? false; it.inkAll = (bool?)j["ink_all"] ?? false; it.press = ((bool?)j["press"] ?? false) || it.kind == "tattoo";   // every tattoo pressed onto the hand / arm actually drawn (1.0.5)      // a fabric glove the skin test can't tell from skin: its colours stay
+                if (it.kind == "fring")                                        // finger rings (FINGERS tab): no skinning, one rigid copy per finger
+                {
+                    var RU = F((string)j["uv"]); it.uv = new Vector2[it.n];
+                    for (int i = 0; i < it.n; i++) it.uv[i] = new Vector2(RU[i * 2], RU[i * 2 + 1]);
+                    it.subs = j["subs"].Select(s => ((string)s["mat"], (int)s["sub"], I((string)s["tris"]))).ToList();
+                    it.fingers = new Dictionary<string, (string, Vector3[], Vector3[])>();
+                    foreach (var fp in ((JObject)j["fingers"]).Properties())
+                    {
+                        var fo = (JObject)fp.Value; var FP = F((string)fo["pos"]); var FN = F((string)fo["nrm"]);
+                        var pos = new Vector3[it.n]; var nrm = new Vector3[it.n];
+                        for (int i = 0; i < it.n; i++) { pos[i] = new Vector3(FP[i * 3], FP[i * 3 + 1], FP[i * 3 + 2]); nrm[i] = new Vector3(FN[i * 3], FN[i * 3 + 1], FN[i * 3 + 2]); }
+                        it.fingers[fp.Name] = ((string)fo["bone"], pos, nrm);
+                    }
+                    Items[it.name] = it; n++; continue;
+                }
+                it.noTone = (bool?)j["no_tone"] ?? false; it.inkAll = (bool?)j["ink_all"] ?? false; it.press = ((bool?)j["press"] ?? false) || it.kind == "tattoo"; it.keepSkin = (bool?)j["keep_skin"] ?? false; it.finger = (string)j["finger"];   // 1.3.0: marks whose texels are skin-coloured (Unheard scars / logo): drawn whole, toned like a hand   // every tattoo pressed onto the hand / arm actually drawn (1.0.5)      // a fabric glove the skin test can't tell from skin: its colours stay
                 if (j["seam_d0"] is JArray sd && sd.Count == 12) it.seamD0 = sd.Select(x => (float)x).ToArray();
                 if (j["skin"] is JArray sk && sk.Count == 3) it.skin = new Color((float)sk[0], (float)sk[1], (float)sk[2]);
                 it.bones = j["bones"].ToObject<string[]>();
@@ -169,7 +199,22 @@ static partial class HandWear
                 r.rootBone = smr.rootBone; r.sharedMesh = mesh; r.updateWhenOffscreen = true; r.shadowCastingMode = smr.shadowCastingMode;
                 var src = mats(it.bundle, it.mesh);
                 r.sharedMaterials = it.subs.Select(s => src != null && src.Length > 0 ? src[Math.Min(s.sub, src.Length - 1)] : null).ToArray();
-                if (it.kind == "tattoo") r.sharedMaterials = r.sharedMaterials.Select(m => InkMaterial(m, it.name, who, it.inkAll)).ToArray();   // only the ink shows
+                if (it.kind == "tattoo" && !it.keepSkin)
+                {
+                    r.sharedMaterials = r.sharedMaterials.Select(m => InkMaterial(m, it.name, who, it.inkAll)).ToArray();   // only the ink shows
+                    float dk = 1f - Plugin.TattooDark.Value / 100f;                   // TATTOO DARKNESS (1.3.0, user: "a bit darker")
+                    foreach (var m in r.sharedMaterials) if (m != null && m.name.EndsWith("_WristAccInk")) m.SetColor("_Color", new Color(dk, dk, dk, 1f));
+                    if (Plugin.TattooDark.Value > 0f) Plugin.Log.LogInfo($"[WristAccessories] tattoos ({who}): {it.name} ink {Plugin.TattooDark.Value:0}% darker");
+                }
+                else if (it.keepSkin)
+                {
+                    if (Plugin.MatchSkinTone.Value && own != null)
+                    {
+                        float sh = 1f + Plugin.SkinShade.Value / 100f; var target = new Color(Mathf.Clamp01(own.Value.r * sh), Mathf.Clamp01(own.Value.g * sh), Mathf.Clamp01(own.Value.b * sh));
+                        r.sharedMaterials = r.sharedMaterials.Select(m => Toned(m, target, it, who)).ToArray();
+                    }
+                    Plugin.Log.LogInfo($"[WristAccessories] handwear ({who}): {it.name} drawn with its own skin patch{(Plugin.MatchSkinTone.Value && own != null ? ", toned to your skin" : "")}");
+                }
                 else if (Plugin.MatchSkinTone.Value && !it.noTone && (own != null || vw != null))
                 {
                     float sh = 1f + Plugin.SkinShade.Value / 100f; var target = own == null ? Color.clear : new Color(Mathf.Clamp01(own.Value.r * sh), Mathf.Clamp01(own.Value.g * sh), Mathf.Clamp01(own.Value.b * sh));
@@ -297,6 +342,125 @@ static partial class HandWear
         swaps.Add(new Swap { r = r, mesh = m }); r.sharedMesh = c;
         Plugin.Log.LogInfo($"[WristAccessories] shoes ({who}): your own boots out of {r.name} ({how}): {gone} of {off} triangles removed (per leg: {CutText(cutN)} / {CutText(cutP)})");
     }
+    public class TopCut { public int[] subs; public int verts; public int[] tris; public string top; }
+    public static readonly Dictionary<string, TopCut> TopWatch = new Dictionary<string, TopCut>();
+    public static bool HasTopWatch(SkinnedMeshRenderer r) => r != null && r.sharedMesh != null && TopWatch.ContainsKey(Key(r.sharedMesh));
+
+    /// <summary>The top's own baked watch out of this renderer: a copy of its mesh without the table's triangles (put back by Restore).</summary>
+    public static bool CutTopWatch(SkinnedMeshRenderer r, List<Swap> swaps, string who)
+    {
+        var m = r.sharedMesh; if (m == null || !TopWatch.TryGetValue(Key(m), out var d)) return false;
+        if (m.subMeshCount != d.subs.Length) { Plugin.Log.LogWarning($"[WristAccessories] top watch ({who}): {Key(m)} has {m.subMeshCount} submeshes, table {d.subs.Length} - left as it is"); return false; }
+        Mesh c; string how;
+        if (m.isReadable) { c = UnityEngine.Object.Instantiate(m); how = "copied"; }
+        else { c = BakeCopy(r, who); how = "rebuilt from bakes"; if (c == null) return false; }
+        if (c.vertexCount != d.verts) { Plugin.Log.LogWarning($"[WristAccessories] top watch ({who}): {Key(m)} copy has {c.vertexCount} verts - left as it is"); UnityEngine.Object.Destroy(c); return false; }
+        var hide = new HashSet<int>(d.tris); int off = 0, gone = 0; var tris = new List<int[]>();
+        for (int s = 0; s < c.subMeshCount; s++)
+        {
+            var t = c.GetTriangles(s);
+            if (t.Length / 3 != d.subs[s]) { Plugin.Log.LogWarning($"[WristAccessories] top watch ({who}): {Key(m)} submesh {s} has {t.Length / 3} triangles, table {d.subs[s]} - left as it is"); UnityEngine.Object.Destroy(c); return false; }
+            var keep = new List<int>(t.Length);
+            for (int i = 0; i < t.Length / 3; i++) { if (hide.Contains(off + i)) { gone++; continue; } keep.Add(t[3 * i]); keep.Add(t[3 * i + 1]); keep.Add(t[3 * i + 2]); }
+            tris.Add(keep.ToArray()); off += t.Length / 3;
+        }
+        for (int s = 0; s < tris.Count; s++) c.SetTriangles(tris[s], s, false);
+        c.name = m.name + "_WristAccNoWatch";
+        swaps.Add(new Swap { r = r, mesh = m }); r.sharedMesh = c;
+        Plugin.Log.LogInfo($"[WristAccessories] top watch ({who}): the {d.top} top's own watch cut out of {r.name} ({how}): {gone} of {off} triangles");
+        return true;
+    }
+
+    // ---- finger rings (FINGERS tab; brought back from the 1.1.0 hands-view build, user 2026-10-30): the setting "Rings" =
+    // finger=ring;... (L1 left thumb .. L5 left little finger, R1..R5), each ring a rigid mesh under its finger bone
+    public static readonly string[] Fingers = { "L1", "L2", "L3", "L4", "L5", "R1", "R2", "R3", "R4", "R5" };
+    public static Dictionary<string, string> RingPicks(string cfg)
+    {
+        var d = new Dictionary<string, string>();
+        foreach (var kv in (cfg ?? "").Split(';'))
+        {
+            var p = kv.Split('=');
+            if (p.Length == 2 && Fingers.Contains(p[0].Trim()) && Items.TryGetValue(p[1].Trim(), out var it) && (it.kind == "fring" || it.finger == p[0].Trim())) d[p[0].Trim()] = p[1].Trim();   // a ring, or a mark (tape / cuts / tattoo) made for that finger
+        }
+        return d;
+    }
+    public static string RingCfg(Dictionary<string, string> d) => string.Join(";", Fingers.Where(d.ContainsKey).Select(k => k + "=" + d[k]));
+
+    public static void BuildRings(EFT.Visual.LoddedSkin skin, Dictionary<string, string> picks, List<GameObject> objs, Func<string, string, Material[]> mats, string who, List<Swap> swaps)
+    {
+        var smr = skin?.GetRenderers().OfType<SkinnedMeshRenderer>().OrderByDescending(r => r.sharedMesh != null ? r.sharedMesh.vertexCount : 0).FirstOrDefault();
+        if (smr == null || smr.bones == null) { Plugin.Log.LogWarning($"[WristAccessories] rings ({who}): no skinned hands"); return; }
+        var byName = new Dictionary<string, Transform>();
+        foreach (var b in swaps?.FirstOrDefault(x => x.r == smr && x.bones != null)?.bones ?? smr.bones)   // a glove swapped the hand bones out: the original ones
+            if (b != null && !byName.ContainsKey(b.name)) byName[b.name] = b;
+        if (smr.rootBone != null) foreach (var b in smr.rootBone.GetComponentsInChildren<Transform>(true)) if (!byName.ContainsKey(b.name)) byName[b.name] = b;
+        var baked = new Dictionary<SkinnedMeshRenderer, Vector3[]>();
+        foreach (var pick in picks.Where(kv => Items[kv.Value].kind == "fring"))
+        {
+            try
+            {
+                var it = Items[pick.Value];
+                if (!it.fingers.TryGetValue(pick.Key, out var f)) continue;
+                if (!byName.TryGetValue(f.bone, out var bone)) { Plugin.Log.LogWarning($"[WristAccessories] rings ({who}): no bone {f.bone} for {pick.Value} on {pick.Key}"); continue; }
+                var surf = objs.Select(o => o != null ? o.GetComponent<SkinnedMeshRenderer>() : null)                // a swapped hand on that side, else your own
+                    .FirstOrDefault(r => r != null && r.name.StartsWith("WristAcc_hw_") && Items.TryGetValue(r.name.Substring(12), out var hi) && hi.kind == "hand" && hi.side == pick.Key.Substring(0, 1)) ?? smr;
+                var pos = FitRing(f.pos, bone, surf, baked, $"{it.name} on {pick.Key}", who);
+                var mesh = new Mesh { name = $"WristAcc_ring_{it.name}_{pick.Key}" };
+                mesh.vertices = pos; mesh.normals = f.nrm; mesh.uv = it.uv; mesh.subMeshCount = it.subs.Count;
+                for (int s = 0; s < it.subs.Count; s++) mesh.SetTriangles(it.subs[s].tris, s);
+                mesh.RecalculateTangents(); mesh.RecalculateBounds();
+                var go = new GameObject($"WristAcc_ring_{pick.Key}_{it.name}");
+                go.transform.SetParent(bone, false); go.layer = smr.gameObject.layer;
+                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var mr = go.AddComponent<MeshRenderer>(); mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                var src = mats(it.bundle, it.mesh);
+                mr.sharedMaterials = Fallback.Fix(it.subs.Select(s => src == null || src.Length == 0 ? null : src[Math.Min(s.sub, src.Length - 1)]).ToArray(), it.subs.Count, "ring " + it.name, smr);
+                objs.Add(go);
+                Plugin.Log.LogInfo($"[WristAccessories] rings ({who}): {it.note} on {pick.Key} ({f.bone}), {it.n} verts, materials {(src == null ? "NOT FOUND" : string.Join("/", mr.sharedMaterials.Select(m => m != null ? m.name : "null")))}");
+            }
+            catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] ring {pick.Value} on {pick.Key}: {e}"); }
+        }
+    }
+
+    // RING FIT (1.3.0, user: "the rings and tape dont really align well with the fingers yet"): the data seats every ring on ONE
+    // reference hand (BEAR Senezh); here it is re-seated on the finger actually drawn: that renderer baked in its current pose, the
+    // verts round the finger segment at the ring's place (+-3 mm along, < 15 mm off the axis) give the finger's centre and median
+    // radius; the ring keeps its shape, centred there, its inner edge 0.6 mm over that radius
+    static Vector3[] FitRing(Vector3[] src, Transform bone, SkinnedMeshRenderer surf, Dictionary<SkinnedMeshRenderer, Vector3[]> baked, string what, string who)
+    {
+        try
+        {
+            Transform child = null; for (int i = 0; i < bone.childCount; i++) if (bone.GetChild(i).name.Contains("Digit")) { child = bone.GetChild(i); break; }
+            if (child == null || surf == null) return src;
+            Vector3 a = child.localPosition; float len = a.magnitude; if (len < 0.005f) return src; a /= len;
+            if (!baked.TryGetValue(surf, out var wv))
+            {
+                var bm = new Mesh(); surf.BakeMesh(bm, true); var lv = bm.vertices; UnityEngine.Object.Destroy(bm);
+                var m = surf.transform.localToWorldMatrix; wv = new Vector3[lv.Length]; for (int i = 0; i < lv.Length; i++) wv[i] = m.MultiplyPoint3x4(lv[i]);
+                baked[surf] = wv;
+            }
+            Vector3 cR = Vector3.zero; foreach (var p in src) cR += p; cR /= src.Length; float t0 = Vector3.Dot(cR, a);
+            var perp = new List<Vector3>();
+            foreach (var w in wv)
+            {
+                var q = bone.InverseTransformPoint(w); float al = Vector3.Dot(q, a);
+                if (Mathf.Abs(al - t0) > 0.003f || al < -0.002f || al > len * 1.2f) continue;
+                var pq = q - a * al; if (pq.magnitude < 0.015f) perp.Add(pq);
+            }
+            if (perp.Count < 12) { Plugin.Log.LogInfo($"[WristAccessories] rings ({who}): {what} left as seated ({perp.Count} finger points at its place on {surf.name})"); return src; }
+            Vector3 cW = Vector3.zero; foreach (var pq in perp) cW += pq; cW /= perp.Count;
+            var rad = perp.Select(pq => (pq - cW).magnitude).OrderBy(x => x).ToList(); float rW = rad[rad.Count / 2];
+            Vector3 cRp = cR - a * t0; var rr = new float[src.Length]; var dirs = new Vector3[src.Length];
+            for (int i = 0; i < src.Length; i++) { var pr = src[i] - a * Vector3.Dot(src[i], a) - cRp; rr[i] = pr.magnitude; dirs[i] = rr[i] > 1e-6f ? pr / rr[i] : Vector3.zero; }
+            float rIn = rr.OrderBy(x => x).ElementAt(Math.Min(rr.Length - 1, rr.Length / 10));   // the ring's inner edge (10th percentile)
+            var outp = new Vector3[src.Length];
+            for (int i = 0; i < src.Length; i++) outp[i] = a * Vector3.Dot(src[i], a) + cW + dirs[i] * Mathf.Max(0.0005f, rr[i] - rIn + rW + 0.0006f);
+            Plugin.Log.LogInfo($"[WristAccessories] rings ({who}): {what} fitted to {surf.name}: centre moved {(cW - cRp).magnitude * 1000:0.0} mm, inner radius {rIn * 1000:0.0} -> {(rW + 0.0006f) * 1000:0.0} mm ({perp.Count} finger points)");
+            return outp;
+        }
+        catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] ring fit {what}: {e.Message}"); return src; }
+    }
+
     static Mesh BakeCopy(SkinnedMeshRenderer r, string who)
     {
         bool en = r.enabled; r.enabled = true;
@@ -472,7 +636,8 @@ static partial class HandWear
     static Material InkMaterial(Material m, string item, string who, bool inkAll)
     {
         if (m == null || !m.HasProperty("_MainTex") || m.GetTexture("_MainTex") == null) return m;
-        int key = m.GetInstanceID() * 2 + (inkAll ? 1 : 0);
+        bool soft = Plugin.SoftInk.Value && !who.Contains("preview");   // the WARDROBE preview's own lights leave transparent Standard black (user shot 2026-10-30): cut-out there
+        int key = m.GetInstanceID() * 4 + (inkAll ? 1 : 0) + (soft ? 2 : 0);
         if (InkCache.TryGetValue(key, out var c) && c != null) return c;
         var std = Shader.Find("Standard"); if (std == null) { Plugin.Log.LogWarning($"[WristAccessories] tattoos ({who}): no Standard shader - {item} drawn as it is"); return m; }
         var src = m.GetTexture("_MainTex"); Texture2D t = null;
@@ -498,21 +663,33 @@ static partial class HandWear
             for (int i = 0; i < px.Length; i++)
             {
                 int x = i % w, y = i / w, ci = (y / cs) * gw + x / cs;
-                bool isInk = sC[ci] > 0 && sN[ci] / sC[ci] >= 0.6f && Ls[i] < sL[ci] / Math.Max(1f, sN[ci]) - 8f;
+                bool skinWin = sC[ci] > 0 && sN[ci] / sC[ci] >= 0.6f;
+                float delta = skinWin ? sL[ci] / Math.Max(1f, sN[ci]) - 8f - Ls[i] : -99f;   // > 0: darker than the skin around it
+                bool isInk = delta > 0f;
+                // SOFT TATTOO EDGES (1.3.0, user shot: the Day Off skeleton blotchy at its edges): alpha fades in over 10 L units round
+                // the threshold instead of the hard cut, drawn with Standard "Fade" blending
+                byte softA = (byte)Mathf.RoundToInt(255f * Mathf.Clamp01((delta + 4f) / 10f));
                 // "ink_all" (1.2.0, sheet 2026-10-29: Scorpion's sleeves are nearly all ink, so no window is 60 % skin): every texel that
                 // is not skin-coloured is ink (the item's triangles cover only its bare-arm patch). Skin here is narrower than SkinW
                 // (hue 2-40 deg, saturation 0.15-0.62, value > 0.3) so crimson ink stays ink (checked on its texture in python)
                 if (inkAll && !isInk) { Color.RGBToHSV(px[i], out float ih, out float isat, out float iv); ih *= 360f; isInk = !(ih >= 2f && ih <= 40f && isat >= 0.15f && isat <= 0.62f && iv > 0.3f); }
-                px[i].a = isInk ? (byte)255 : (byte)0; if (isInk) ink++;
+                px[i].a = soft ? (isInk && delta <= 0f ? (byte)255 : softA) : (isInk ? (byte)255 : (byte)0); if (isInk) ink++;   // isInk with delta <= 0: an "ink_all" texel
             }
             t.SetPixels32(px); t.Apply(true); t.name = src.name + "_WristAccInk"; t.wrapMode = src.wrapMode; UnityEngine.Object.DontDestroyOnLoad(t);
             c = new Material(std) { name = m.name + "_WristAccInk" }; UnityEngine.Object.DontDestroyOnLoad(c);
-            c.SetTexture("_MainTex", t); c.SetColor("_Color", Color.white); c.SetFloat("_Mode", 1f); c.SetOverrideTag("RenderType", "TransparentCutout");
-            c.EnableKeyword("_ALPHATEST_ON"); c.SetFloat("_Cutoff", 0.5f); c.renderQueue = 2450; c.SetFloat("_Glossiness", 0.25f); c.SetFloat("_Metallic", 0f);
+            c.SetTexture("_MainTex", t); c.SetColor("_Color", Color.white);
+            if (soft)
+            {
+                c.SetFloat("_Mode", 2f); c.SetOverrideTag("RenderType", "Transparent"); c.EnableKeyword("_ALPHABLEND_ON");
+                c.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha); c.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                c.SetInt("_ZWrite", 0); c.renderQueue = 3000;
+            }
+            else { c.SetFloat("_Mode", 1f); c.SetOverrideTag("RenderType", "TransparentCutout"); c.EnableKeyword("_ALPHATEST_ON"); c.SetFloat("_Cutoff", 0.5f); c.renderQueue = 2450; }
+            c.SetFloat("_Glossiness", 0.25f); c.SetFloat("_Metallic", 0f);
             // no _BumpMap: the game's normal maps are packed for its own shaders; under Standard they lit the ink white (SeamTest 2026-10-27)
             c.SetFloat("_Glossiness", 0.1f); c.EnableKeyword("_SPECULARHIGHLIGHTS_OFF"); c.SetFloat("_SpecularHighlights", 0f); c.EnableKeyword("_GLOSSYREFLECTIONS_OFF"); c.SetFloat("_GlossyReflections", 0f);
             InkCache[key] = c;
-            Plugin.Log.LogInfo($"[WristAccessories] tattoos ({who}): {item} ink {100f * ink / Math.Max(1, px.Length):0}%{(inkAll ? " (all non-skin)" : "")} of {src.name} ({src.width}x{src.height}), Standard cut-out");
+            Plugin.Log.LogInfo($"[WristAccessories] tattoos ({who}): {item} ink {100f * ink / Math.Max(1, px.Length):0}%{(inkAll ? " (all non-skin)" : "")} of {src.name} ({src.width}x{src.height}), Standard {(soft ? "fade (soft edges)" : "cut-out")}");
             return c;
         }
         catch (Exception e) { if (t != null) UnityEngine.Object.Destroy(t); Plugin.Log.LogError($"[WristAccessories] tattoos {item}: {e.Message}"); return m; }

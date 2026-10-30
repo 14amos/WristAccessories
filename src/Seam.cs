@@ -238,19 +238,19 @@ static partial class HandWear
     // ---- arm / hand tattoo overlays on any top (kind "tattoo" + "press", lab/arm_ink.py; user 2026-10-27 "any top, hidden under
     // sleeves"): every ink vertex put InkLift over the wearer's own surface (4 nearest vertices of a bake of the hands as they are),
     // triangles dropped where that surface is not skin (a sleeve, a glove, a cuff) or more than InkFar away (nothing modelled there).
-    const float InkLift = 0.0006f, InkFar = 0.035f;   // 3.5 cm (was 2): the WARDROBE preview body's third-person arm lies further from the bones (user 2026-10-28: forearm ink dropped)
+    const float InkLift = 0.0008f, InkFar = 0.035f;   // lift 0.8 mm (was 0.6; 1.2.0 with the closest-point press)   // 3.5 cm (was 2): the WARDROBE preview body's third-person arm lies further from the bones (user 2026-10-28: forearm ink dropped)
     // surface points of a renderer as drawn now, in r's mesh space: positions, normals, skin flag per vertex (its texture)
     static readonly Dictionary<string, bool[]> SkinCache = new Dictionary<string, bool[]>();
-    static (Vector3[] v, Vector3[] n, bool[] skin) Surface(SkinnedMeshRenderer s, Matrix4x4 toR)
+    static (Vector3[] v, Vector3[] n, bool[] skin, int[] t) Surface(SkinnedMeshRenderer s, Matrix4x4 toR)
     {
         var bm = new Mesh(); s.BakeMesh(bm, true);
-        var v = bm.vertices; var n = bm.normals; var uv = bm.uv; var mats = s.sharedMaterials;
+        var v = bm.vertices; var n = bm.normals; var uv = bm.uv; var mats = s.sharedMaterials; var tri = bm.triangles;
         string ck = (s.sharedMesh != null ? s.sharedMesh.GetInstanceID() : 0) + "|" + string.Join(",", mats.Select(m => m != null ? m.GetInstanceID() : 0));
         if (SkinCache.TryGetValue(ck, out var cached) && cached.Length == v.Length)
         {
             UnityEngine.Object.Destroy(bm);
             for (int k = 0; k < v.Length; k++) { v[k] = toR.MultiplyPoint3x4(v[k]); n[k] = toR.MultiplyVector(n[k]).normalized; }
-            return (v, n, cached);
+            return (v, n, cached, tri);
         }
         var skin = new bool[v.Length];
         for (int sm = 0; sm < bm.subMeshCount && sm < mats.Length; sm++)
@@ -265,7 +265,25 @@ static partial class HandWear
         }
         UnityEngine.Object.Destroy(bm); if (SkinCache.Count > 32) SkinCache.Clear(); SkinCache[ck] = skin;
         for (int k = 0; k < v.Length; k++) { v[k] = toR.MultiplyPoint3x4(v[k]); n[k] = toR.MultiplyVector(n[k]).normalized; }
-        return (v, n, skin);
+        return (v, n, skin, tri);
+    }
+
+    // closest point of triangle abc to p (Ericson, Real-Time Collision Detection 5.1.5)
+    static Vector3 ClosestOnTri(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+    {
+        Vector3 ab = b - a, ac = c - a, ap = p - a; float d1 = Vector3.Dot(ab, ap), d2 = Vector3.Dot(ac, ap);
+        if (d1 <= 0 && d2 <= 0) return a;
+        Vector3 bp = p - b; float d3 = Vector3.Dot(ab, bp), d4 = Vector3.Dot(ac, bp);
+        if (d3 >= 0 && d4 <= d3) return b;
+        float vc = d1 * d4 - d3 * d2;
+        if (vc <= 0 && d1 >= 0 && d3 <= 0) return a + ab * (d1 / (d1 - d3));
+        Vector3 cp = p - c; float d5 = Vector3.Dot(ab, cp), d6 = Vector3.Dot(ac, cp);
+        if (d6 >= 0 && d5 <= d6) return c;
+        float vb = d5 * d2 - d1 * d6;
+        if (vb <= 0 && d2 >= 0 && d6 <= 0) return a + ac * (d2 / (d2 - d6));
+        float va = d3 * d6 - d5 * d4;
+        if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)));
+        float den = 1f / (va + vb + vc); return a + ab * (vb * den) + ac * (vc * den);
     }
 
     static int[][] PressInk(Item it, Vector3[] pos, SkinnedMeshRenderer r, SkinnedMeshRenderer hand, string who, Transform[] origBones = null)
@@ -276,7 +294,7 @@ static partial class HandWear
         var own = Surface(r, Matrix4x4.identity);
         // a swapped hand on this side (1.0.5, user 2026-10-28: the Lonsdale tattoo vanished under another outfit's hand): its surface
         // too - the ink goes onto whatever is outermost there, the swapped hand over your own (shrunk) one
-        int nOwn = own.v.Length; var wv = own.v; var wn = own.n; var skin = own.skin;
+        int nOwn = own.v.Length; var wv = own.v; var wn = own.n; var skin = own.skin; var wt = own.t;
         if (hand != null)
         {
             var hs = Surface(hand, r.transform.worldToLocalMatrix * hand.transform.localToWorldMatrix);
@@ -285,6 +303,7 @@ static partial class HandWear
             var hName = hand.name.StartsWith("WristAcc_hw_") ? hand.name.Substring("WristAcc_hw_".Length) : hand.name;
             if (!(Items.TryGetValue(hName, out var hIt) && hIt.noTone)) for (int k = 0; k < hs.skin.Length; k++) hs.skin[k] = true;
             wv = wv.Concat(hs.v).ToArray(); wn = wn.Concat(hs.n).ToArray(); skin = skin.Concat(hs.skin).ToArray();
+            wt = wt.Concat(hs.t.Select(x => x + nOwn)).ToArray();
         }
         int nv = wv.Length;
         var bind = new Dictionary<string, Matrix4x4>();
@@ -356,6 +375,17 @@ static partial class HandWear
             long k = Key(Mathf.FloorToInt(p.x / Cell), Mathf.FloorToInt(p.y / Cell), Mathf.FloorToInt(p.z / Cell));
             if (!grid.TryGetValue(k, out var l)) grid[k] = l = new List<int>(); l.Add(j);
         }
+        // the triangles round each surface point (1.2.0, sheet 2026-10-29 "tattoo application is very screwy"): the ink goes onto the
+        // CLOSEST POINT of those triangles. Before, it went over the average of the 4 nearest vertices, which on a round forearm with
+        // big triangles lies under the skin (a 2 cm edge on a 4 cm arm sags 1.25 mm, the lift is 0.6) -> the ink sank in patches
+        var adj = new Dictionary<int, List<int>>();
+        for (int t3 = 0; t3 + 2 < wt.Length; t3 += 3)
+            for (int e = 0; e < 3; e++)
+            {
+                var p = wv[wt[t3 + e]]; if (p.x < lo.x || p.y < lo.y || p.z < lo.z || p.x > hi.x || p.y > hi.y || p.z > hi.z) continue;
+                if (!adj.TryGetValue(wt[t3 + e], out var al)) adj[wt[t3 + e]] = al = new List<int>(8); al.Add(t3);
+            }
+        int onTri = 0;
         var near = new List<int>(256);
         var ok = new bool[n]; var best = new (int i, float d2)[4]; int far = 0, cloth = 0;
         for (int i = 0; i < n; i++)
@@ -379,6 +409,26 @@ static partial class HandWear
             foreach (var bb in best) if (bb.i >= 0) { q += wv[bb.i]; nn += wn[bb.i]; c++; if (skin[bb.i]) sk++; }
             if (c == 0) { far++; continue; }
             q /= c; nn = nn.normalized; float sd = Vector3.Dot(vw[i] - q, nn);
+            // the closest point on the triangles round the nearest surface points (same surface as picked above)
+            float bd = float.MaxValue; Vector3 bq = q, bn = nn; int bt = -1;
+            foreach (var bb in best)
+            {
+                if (bb.i < 0 || !adj.TryGetValue(bb.i, out var tl)) continue;
+                foreach (int t3 in tl)
+                {
+                    Vector3 a = wv[wt[t3]], b2 = wv[wt[t3 + 1]], c2 = wv[wt[t3 + 2]];
+                    var cp = ClosestOnTri(vw[i], a, b2, c2); float dd = (cp - vw[i]).sqrMagnitude;
+                    if (dd < bd) { bd = dd; bq = cp; bt = t3; }
+                }
+            }
+            if (bt >= 0)
+            {
+                Vector3 a = wv[wt[bt]], b2 = wv[wt[bt + 1]], c2 = wv[wt[bt + 2]];
+                var fn = Vector3.Cross(b2 - a, c2 - a).normalized; var vn = (wn[wt[bt]] + wn[wt[bt + 1]] + wn[wt[bt + 2]]).normalized;
+                if (Vector3.Dot(fn, vn) < 0) fn = -fn;
+                q = bq; nn = (fn + vn).normalized; sd = Vector3.Dot(vw[i] - q, nn); onTri++;
+                sk = (skin[wt[bt]] ? 1 : 0) + (skin[wt[bt + 1]] ? 1 : 0) + (skin[wt[bt + 2]] ? 1 : 0); c = 3;
+            }
             float farLim = hand != null && best[0].i >= nOwn ? InkFar * 1.6f : InkFar;   // fingers of two different hands line up less well
             if (Mathf.Abs(sd) > farLim || Mathf.Sqrt(best.Min(x => x.d2)) > farLim) { far++; continue; }
             if (sk * 2 < c) { cloth++; continue; }
@@ -391,7 +441,7 @@ static partial class HandWear
             for (int k = 0; k + 2 < t.Length; k += 3) { total++; if (ok[t[k]] && ok[t[k + 1]] && ok[t[k + 2]]) { l.Add(t[k]); l.Add(t[k + 1]); l.Add(t[k + 2]); kept++; } }
             outT[s] = l.ToArray();
         }
-        Plugin.Log.LogInfo($"[WristAccessories] tattoos ({who}): {it.name} pressed onto your {(hand != null ? "swapped hand " + hand.name + " and arm" : "arm")}: {kept} of {total} ink triangles shown, {cloth} vertices under cloth, {far} with nothing of yours near ({nOwn} + {nv - nOwn} surface points){(missing > 0 ? $", {missing} bones not in your hands" : "")}");
+        Plugin.Log.LogInfo($"[WristAccessories] tattoos ({who}): {it.name} pressed onto your {(hand != null ? "swapped hand " + hand.name + " and arm" : "arm")}: {kept} of {total} ink triangles shown, {onTri} of {n} vertices on your skin triangles, {cloth} vertices under cloth, {far} with nothing of yours near ({nOwn} + {nv - nOwn} surface points){(missing > 0 ? $", {missing} bones not in your hands" : "")}");
         return outT;
     }
 

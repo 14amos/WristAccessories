@@ -93,7 +93,6 @@ static class AccessoriesTab
         for (int i = 0; i < PerWrist; i++) { int k = i; l.Add(new Slot { Group = "L", Caption = $"LEFT {k + 1}", Choices = FittedChoices, Get = () => SlotOf(Plugin.LeftWrist, k), Set = v => SetSlot(Plugin.LeftWrist, k, v) }); }
         for (int i = 0; i < PerWrist; i++) { int k = i; l.Add(new Slot { Group = "R", Caption = $"RIGHT {k + 1}", Choices = FittedChoices, Get = () => SlotOf(Plugin.RightWrist, k), Set = v => SetSlot(Plugin.RightWrist, k, v) }); }
         l.Add(new Slot { Group = "W", Caption = "WATCH", Choices = WatchChoices, Get = () => Plugin.Watch.Value ?? "", Set = v => Plugin.Watch.Value = v });
-        l.Add(new Slot { Group = "W", Caption = "RING", Choices = () => new List<(string, string)> { ("None", "none"), ("Gold skull ring, left hand", "left"), ("Gold skull ring, right hand", "right") }, Get = () => Plugin.RingHand.Value ?? "none", Set = v => Plugin.RingHand.Value = v });
         l.Add(new Slot { Group = "H", Caption = "LEFT HAND", Choices = () => HandChoices("L"), Get = () => HandOf("L"), Set = v => SetHand("L", v) });
         l.Add(new Slot { Group = "H", Caption = "RIGHT HAND", Choices = () => HandChoices("R"), Get = () => HandOf("R"), Set = v => SetHand("R", v) });
         for (int i = 0; i < 2; i++) { int k = i; l.Add(new Slot { Group = "H", Caption = $"HAND {k + 1}", Choices = PieceChoices, Get = () => PieceOf(k), Set = v => SetPiece(k, v) }); }
@@ -116,6 +115,8 @@ static class AccessoriesTab
         l.Add(new Slot { Group = "N", Caption = "SLIDE", Tip = "Moves the item picked in ADJUST along your arm, 2 mm per click: + toward the hand, - toward the elbow. The items after it move with it.", Get = () => $"{SlideOf(AngleItem()):0}", Set = v => SetSlide(AngleItem(), float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)), Choices = () => new List<(string, string)>() });
         { var o = OnOff("STRAIGHTEN BRACELETS", Plugin.Straighten); o.Tip = "Bracelets taken from other outfits go straight round your wrist and close properly, instead of keeping the tilt they had on their original outfit."; l.Add(o); }
         l.Add(new Slot { Group = "N", Caption = "SKIN SHADE", Tip = "Makes the skin of hands and fingerless gloves from other outfits lighter (+) or darker (-), 5% per click, if the automatic match doesn't quite fit your arm.", Get = () => $"{Plugin.SkinShade.Value:0}", Set = v => Plugin.SkinShade.Value = Mathf.Clamp(float.Parse(v, System.Globalization.CultureInfo.InvariantCulture), -50f, 50f), Choices = () => new List<(string, string)>() });
+        l.Add(new Slot { Group = "N", Caption = "TATTOO DARKNESS", Tip = "Makes the ink of every tattoo darker, 5% per click (0 = as the outfit has it). SKIN SHADE does not change tattoos.", Get = () => $"{Plugin.TattooDark.Value:0}", Set = v => Plugin.TattooDark.Value = Mathf.Clamp(float.Parse(v, System.Globalization.CultureInfo.InvariantCulture), 0f, 80f), Choices = () => new List<(string, string)>() });
+        { var o = OnOff("SOFT TATTOO EDGES", Plugin.SoftInk); o.Tip = "Tattoo ink fades out at its edges instead of a hard cut. Off: the old hard edges."; l.Add(o); }
         { var o = OnOff("SAME ON BOTH HANDS", Plugin.HandsAsSet); o.Tip = "Pick gloves (or another outfit's hand) for one hand and the other hand gets them too. Off: each hand is picked on its own."; l.Add(o); }
         l.Add(new Slot { Group = "O", Caption = "QUICK UNEQUIP", Tip = "Click a tile with this mouse button to take off what it holds (back to your own, or none) - no scrolling back up the list.", Choices = () => new List<(string, string)> { ("Middle mouse", "middle"), ("Right mouse", "right"), ("Off", "off") }, Get = () => Plugin.QuickUnequip.Value, Set = v => Plugin.QuickUnequip.Value = v });
         { var o = OnOff("PICKS PER PROFILE", Plugin.PerProfile); o.Tip = "Every game profile keeps its own picks here. Off: the same picks on every profile."; l.Add(o); }
@@ -130,6 +131,10 @@ static class AccessoriesTab
         l.Add(new Slot { Group = "O", Caption = "DOGTAG PRESET", Tip = "Load a saved set of the 8 dogtags (models and flips).", Choices = () => new List<(string, string)> { ("Load a tag set...", "") }.Concat(DogTagPresets.Names().Select(n => (n, n))).ToList(), Get = () => DogTagPresets.Last, Set = v => { if (!string.IsNullOrEmpty(v)) DogTagPresets.Load(v); } });
         l.Add(new Slot { Group = "Q", Caption = "SAVE DOGTAGS AS", Tip = "Type a name, SAVE stores the 8 dogtags you have now (same name = replaced), DELETE removes the tag set with that name." });
         for (int i = 1; i <= DogTags.Count; i++) { string k = i.ToString(); l.Add(new Slot { Group = "D", Caption = $"TAG {k}", Tip = $"The dogtag hanging at place {k} of your kill sleeve or dogtag chains (1 = nearest the wrist).", Choices = () => DogTags.ModelChoices(k), Get = () => DogTags.ModelOf(k), Set = v => DogTags.SetModel(k, v) }); }
+        // FINGERS page (1.2.1, user 2026-10-30; the finger rings of the 1.1.0 hands-view build, as a plain list): a ring on any finger
+        l.Add(new Slot { Group = "O", Caption = "RING PRESET", Tip = "Load a saved set of finger rings.", Choices = () => new List<(string, string)> { ("Load a ring set...", "") }.Concat(RingPresets.Names().Select(n => (n, n))).ToList(), Get = () => RingPresets.Last, Set = v => { if (!string.IsNullOrEmpty(v)) RingPresets.Load(v); } });
+        l.Add(new Slot { Group = "G", Caption = "SAVE RINGS AS", Tip = "Type a name, SAVE stores the rings you wear now (same name = replaced), DELETE removes the ring set with that name." });
+        foreach (var f in HandWear.Fingers) { string k = f; l.Add(new Slot { Group = "O", Caption = FingerCaption(k), Tip = $"A ring on your {FingerCaption(k).ToLowerInvariant()}.", Choices = () => RingChoices(k), Get = () => HandWear.RingPicks(Plugin.Rings.Value).TryGetValue(k, out var r) ? r : "", Set = v => SetRing(k, v) }); }
         { var o = OnOff("CLEAN SKIN UNDER WATCH", Plugin.CleanWatchShadow); o.Tip = "When an outfit's own watch is hidden or replaced, this removes the dark mark the watch left painted on the skin (on outfits that have the fix)."; l.Add(o); }
         return l;
     }
@@ -199,7 +204,7 @@ static class AccessoriesTab
     static List<(string, string)> PieceChoices()
     {
         var l = new List<(string, string)> { ("None", "") };
-        foreach (var it in HandWear.Items.Values.Where(i => i.kind != "hand" && i.kind != "feet" && !IsArm(i.name) && Bundles.Has(i.bundle)).OrderBy(i => i.note)) l.Add(($"{it.note} ({(it.side == "L" ? "left" : "right")})", it.name));
+        foreach (var it in HandWear.Items.Values.Where(i => i.kind != "hand" && i.kind != "feet" && i.kind != "fring" && i.finger == null && !IsArm(i.name) && Bundles.Has(i.bundle)).OrderBy(i => i.note)) l.Add(($"{it.note} ({(it.side == "L" ? "left" : "right")})", it.name));
         return l;
     }
     static List<(string, string)> ShoeChoices()
@@ -302,17 +307,31 @@ static class AccessoriesTab
     }
 
     // the options in small tabs (1.1.0, user 2026-10-28: "the menus starting to get too big" - EVERY SHOE ran under the bottom bar)
-    internal static readonly string[] OptPages = { "PRESETS", "FIT", "TATTOOS & SKIN", "DOGTAGS", "MORE" };
+    internal static readonly string[] OptPages = { "PRESETS", "FIT", "TATTOOS & SKIN", "DOGTAGS", "FINGERS", "MORE" };
     static string _optPage = "FIT";
     static string OptPage(string caption) => caption switch
     {
         "PRESET" or "LOAD WHAT" or "SAVE AS" => "PRESETS",
         "WATCH ON" or "WATCH WORN" or "WATCH FACE" or "ADJUST" or "ANGLE" or "SLIDE" or "STRAIGHTEN BRACELETS" or "CLEAN SKIN UNDER WATCH" => "FIT",
-        "TATTOO" or "TATTOO SIZE" or "SKIN SHADE" or "MATCH SKIN TONE" => "TATTOOS & SKIN",
+        "TATTOO" or "TATTOO SIZE" or "TATTOO DARKNESS" or "SOFT TATTOO EDGES" or "SKIN SHADE" or "MATCH SKIN TONE" => "TATTOOS & SKIN",
         "ALL TAGS" or "DOGTAG PRESET" or "SAVE DOGTAGS AS" => "DOGTAGS",
         var c when c.StartsWith("TAG ") => "DOGTAGS",
+        "RING PRESET" or "SAVE RINGS AS" => "FINGERS",
+        var c when c.EndsWith(" THUMB") || c.EndsWith(" INDEX") || c.EndsWith(" MIDDLE") || c.EndsWith(" RING") || c.EndsWith(" LITTLE") => "FINGERS",
         _ => "MORE",
     };
+
+    static string FingerCaption(string k) => (k[0] == 'L' ? "LEFT " : "RIGHT ") + new[] { "THUMB", "INDEX", "MIDDLE", "RING", "LITTLE" }[k[1] - '1'];
+    static List<(string, string)> RingChoices(string finger) => new List<(string, string)> { ("None", "") }
+        .Concat(HandWear.Items.Values.Where(i => i.kind == "fring" && Bundles.Has(i.bundle)).OrderBy(i => i.note).Select(i => (i.note, i.name)))
+        .Concat(HandWear.Items.Values.Where(i => i.finger == finger && Bundles.Has(i.bundle)).OrderBy(i => i.note).Select(i => (i.note.Split(new[] { " (" }, StringSplitOptions.None)[0], i.name))).ToList();   // + tape / cuts / tattoos made for this finger
+    static void SetRing(string finger, string ring)
+    {
+        var d = HandWear.RingPicks(Plugin.Rings.Value);
+        if (string.IsNullOrEmpty(ring)) d.Remove(finger); else d[finger] = ring;
+        Plugin.Rings.Value = HandWear.RingCfg(d);
+        Plugin.Log.LogInfo($"[WristAccessories] FINGERS: {finger} = {(string.IsNullOrEmpty(ring) ? "none" : ring)} (rings now '{Plugin.Rings.Value}')");
+    }
 
     static Slot OnOff(string caption, ConfigEntry<bool> e) => new Slot
     {
@@ -588,6 +607,13 @@ static class AccessoriesTab
                     var cap = Text(pc, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
                     Place(cap.rectTransform, new Vector2(320, -y), new Vector2(250, 36));
                     PresetRow(scr, pc, new Vector2(560, -y), () => DogTagPresets.Last, DogTagPresets.Save, DogTagPresets.Delete);
+                }
+                else if (sl.Group == "G")
+                {
+                    var pc = pageBox[OptPage(sl.Caption)]; float y = RowY(OptPage(sl.Caption));
+                    var cap = Text(pc, sl.Caption, 15, Label, TextAlignmentOptions.MidlineLeft); cap.characterSpacing = 2; AddTip(cap, sl.Tip);
+                    Place(cap.rectTransform, new Vector2(320, -y), new Vector2(250, 36));
+                    PresetRow(scr, pc, new Vector2(560, -y), () => RingPresets.Last, RingPresets.Save, RingPresets.Delete);
                 }
                 else if (sl.Group == "S")
                 {

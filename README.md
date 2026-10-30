@@ -99,6 +99,8 @@ Safe to remove: your profile doesn't depend on this mod. The only thing it saves
 
 ## Known issues
 - Hands taken from other outfits (LEFT HAND / RIGHT HAND) can show a jagged edge across the back of the hand. A fix is coming.
+- Some outfits still look a bit buggy in the WARDROBE 3D preview.
+- Rings and finger tape on the FINGERS tab are a work in progress: they don't line up perfectly with every hand yet.
 - The 3D preview on the WARDROBE tab can look different from first person (for example, watches worn "as its outfit wears it"
   show over the sleeve in the preview).
 

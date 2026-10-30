@@ -73,12 +73,12 @@ class WristRig : MonoBehaviour
             string hid = body != null && body.BodyCustomization != null && body.BodyCustomization.TryGetValue(part, out var id) ? id.ToString() : "";
             string hidNote = null;
             if (hands != null) hid = WristFit.DrawnId(hid, hands.GetRenderers().OfType<SkinnedMeshRenderer>().Select(r => r.sharedMesh != null ? r.sharedMesh.name : null), !fp, out hidNote);
-            string key = body == null || hands == null ? "" : $"{hid}|{hands.GetInstanceID()}|{Plugin.Watch.Value}|{Plugin.LeftWrist.Value}|{Plugin.RightWrist.Value}|{Plugin.RingHand.Value}|{Plugin.WatchFace.Value}|{Plugin.WatchWrist.Value}|{Plugin.InnerAngle.Value:0}|{Plugin.ItemAngles.Value}|{Plugin.Handwear.Value}|{Plugin.ItemSlides.Value}|{Plugin.SleeveFit.Value:0.00}|{Plugin.LooseSize.Value}|{Plugin.CleanWatchShadow.Value}|{Plugin.Straighten.Value}|{Plugin.MatchSkinTone.Value}|{Plugin.SkinShade.Value:0}|{Plugin.OnScav.Value}|{Plugin.WatchesInSlots.Value}|{Plugin.Shoes.Value}|{Plugin.DogTagPicks.Value}|{Plugin.WatchWorn.Value}|{Plugin.DogTagFlips.Value}|{Plugin.DoubleSided.Value}|{Plugin.TattooSizes.Value}|{Plugin.SeamBlend.Value}|{DataVersion}";   // 1.1.0: tattoo sizes + seam blend rebuild too (user: "the tattoo size modifier doesnt work")
+            string key = body == null || hands == null ? "" : $"{hid}|{hands.GetInstanceID()}|{Plugin.Watch.Value}|{Plugin.LeftWrist.Value}|{Plugin.RightWrist.Value}|{Plugin.RingHand.Value}|{Plugin.Rings.Value}|{Plugin.WatchFace.Value}|{Plugin.WatchWrist.Value}|{Plugin.InnerAngle.Value:0}|{Plugin.ItemAngles.Value}|{Plugin.Handwear.Value}|{Plugin.ItemSlides.Value}|{Plugin.SleeveFit.Value:0.00}|{Plugin.LooseSize.Value}|{Plugin.CleanWatchShadow.Value}|{Plugin.Straighten.Value}|{Plugin.MatchSkinTone.Value}|{Plugin.SkinShade.Value:0}|{Plugin.OnScav.Value}|{Plugin.WatchesInSlots.Value}|{Plugin.Shoes.Value}|{Plugin.DogTagPicks.Value}|{Plugin.WatchWorn.Value}|{Plugin.DogTagFlips.Value}|{Plugin.DoubleSided.Value}|{Plugin.TattooSizes.Value}|{Plugin.TattooDark.Value:0}|{Plugin.SoftInk.Value}|{Plugin.SeamBlend.Value}|{DataVersion}";   // 1.1.0: tattoo sizes + seam blend rebuild too (user: "the tattoo size modifier doesnt work")
             if (key != _key)
             {
                 _key = key; _body = body; _hands = hands; Clear();
                 if (hidNote != null) Plugin.Log.LogInfo($"[WristAccessories] {(preview ? "preview " : "")}outline: {hidNote}");
-                if (key != "") { HideOutfitWatch(body); _ = Rebuild(body, hands, hid, preview, fp); }
+                if (key != "") { HideOutfitWatch(body, preview); _ = Rebuild(body, hands, hid, preview, fp); }
             }
         }
         if (_objs.Count > 0 && _hands != null)
@@ -102,10 +102,12 @@ class WristRig : MonoBehaviour
         RestoreOutfitWatch();
     }
     readonly List<HandWear.Swap> _swaps = new List<HandWear.Swap>();
+    readonly List<HandWear.Swap> _watchCuts = new List<HandWear.Swap>();
 
     void RestoreOutfitWatch()
     {
         foreach (var kv in _hidden) if (kv.Key != null) kv.Key.sharedMaterials = kv.Value;     // the outfit's own watch back
+        HandWear.Restore(_watchCuts);                                                          // the top's baked watch back
         _hidden.Clear();
         if (_hiddenDial != null) _hiddenDial.SetActive(true);
         _hiddenDial = null;
@@ -132,9 +134,21 @@ class WristRig : MonoBehaviour
         return m;
     }
 
-    void HideOutfitWatch(PlayerBody body)
+    void HideOutfitWatch(PlayerBody body, bool preview)
     {
         if (string.IsNullOrEmpty(Plugin.Watch.Value)) return;
+        // the preview body's top has its watch baked into its own material (no watch material to hide): cut its triangles out
+        if (preview)
+        {
+            int cut = 0; var none = new List<string>();
+            if (body.BodySkins.TryGetValue(EBodyModelPart.Body, out var top))
+                foreach (var r in top.GetRenderers().OfType<SkinnedMeshRenderer>())
+                {
+                    if (HandWear.HasTopWatch(r)) { try { if (HandWear.CutTopWatch(r, _watchCuts, "preview")) cut++; } catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] top watch (preview): {r.name}: {e.Message}"); } }
+                    else if (r.sharedMesh != null) none.Add(r.sharedMesh.name);
+                }
+            if (cut == 0) Plugin.Log.LogInfo($"[WristAccessories] top watch (preview): no baked-watch table for {(none.Count > 0 ? string.Join(", ", none) : "the top")} - its own watch (if any) stays");
+        }
         int n = 0, cleaned = 0;
         foreach (var skin in body.BodySkins.Values)
             foreach (var r in skin.GetRenderers())
@@ -187,20 +201,20 @@ class WristRig : MonoBehaviour
                 ("L", "Base HumanLForearm3", left.Distinct().Select(n => WristFit.Accs[n]).ToList()),
                 ("R", "Base HumanRForearm3", right.Distinct().Select(n => WristFit.Accs[n]).ToList()),
             };
-            string ring = (Plugin.RingHand.Value ?? "none").ToLowerInvariant();
-            if ((ring == "left" || ring == "right") && WristFit.Accs.TryGetValue("skullring", out var sr))
-                plan.Add((ring == "left" ? "ringL" : "ringR", ring == "left" ? "Base HumanLDigit41" : "Base HumanRDigit41", new List<WristFit.Acc> { sr }));
+            // the old RING setting (skull ring on the ring finger) is gone: rings are the FINGERS tab's (HandWear.BuildRings)
             plan = plan.Where(p => p.items.Count > 0).ToList();
             var hw = (Plugin.Handwear.Value ?? "").Split(',').Select(x => x.Trim()).Where(x => HandWear.Items.ContainsKey(x)).Distinct().ToList();
             var shoes = HandWear.Items.TryGetValue(Plugin.Shoes.Value ?? "", out var sh) && sh.kind == "feet" ? new List<string> { sh.name } : new List<string>();
-            if (plan.Count == 0 && hw.Count == 0 && shoes.Count == 0) { Plugin.Log.LogInfo("[WristAccessories] wrists: nothing picked"); return; }
+            var rings = HandWear.RingPicks(Plugin.Rings.Value);                // FINGERS tab
+            hw = hw.Concat(rings.Values.Where(n => HandWear.Items[n].kind != "fring")).Distinct().ToList();   // finger marks (tape / cuts / finger tattoos): drawn like hand tattoos
+            if (plan.Count == 0 && hw.Count == 0 && shoes.Count == 0 && rings.Count == 0) { Plugin.Log.LogInfo("[WristAccessories] wrists: nothing picked"); return; }
 
             // the items' own bundles (materials, textures) - loaded the way the game loads item models
             // held with our own retain token for the session, like the game's character preview holds its bundles; they used to go
             // into the Raid pools, which the game clears after every raid: the cached materials lost their shaders (magenta
             // accessories on the post-raid character preview, friend's screenshot 2026-10-26)
             var bundles = plan.SelectMany(p => p.items).SelectMany(a => a.meshes.Select(m => m.bundle).Concat(new[] { a.bundle }).Concat(a.dial != null ? new[] { a.dial.prefab } : new string[0]))   // + the item's own bundle: loose entries have no meshes of their own
-                .Concat(HandWear.Bundles(hw)).Concat(HandWear.Bundles(shoes)).Concat(DogTags.Bundles(plan.SelectMany(p => p.items)))   // + the picked dogtags' item bundles
+                .Concat(HandWear.Bundles(hw)).Concat(HandWear.Bundles(shoes)).Concat(HandWear.Bundles(rings.Values)).Concat(DogTags.Bundles(plan.SelectMany(p => p.items)))   // + the picked dogtags' item bundles
                 .Where(b => !string.IsNullOrEmpty(b)).Distinct().Where(b => !Held.Contains(b)).ToArray();
             if (bundles.Length > 0)
             {
@@ -221,6 +235,14 @@ class WristRig : MonoBehaviour
                 if (body.BodySkins.TryGetValue(hwPart, out var handSkin) && handSkin != null)
                     HandWear.Build(handSkin, hw, _objs, _swaps, (b, m) => Materials(b, m), Who(preview, fp));
                 else Plugin.Log.LogWarning($"[WristAccessories] handwear ({(preview ? "preview" : "first person")}): no {hwPart} skin on this body (has {string.Join(", ", body.BodySkins.Keys)}) - {hw.Count} item(s) not shown");
+            }
+
+            // finger rings: under the finger bones of the skin that has the hands (after the handwear: a glove swaps the bones out)
+            if (rings.Count > 0)
+            {
+                if (body.BodySkins.TryGetValue(fp ? EBodyModelPart.Hands : EBodyModelPart.Body, out var ringSkin) && ringSkin != null)
+                    HandWear.BuildRings(ringSkin, rings, _objs, (b, m) => Materials(b, m), Who(preview, fp), _swaps);
+                else Plugin.Log.LogWarning($"[WristAccessories] rings ({(preview ? "preview" : "first person")}): no hands skin on this body - {rings.Count} ring(s) not shown");
             }
 
             // shoes: another lower outfit's shoes on the Feet part (the legs: in first person and on a preview body alike)
@@ -612,9 +634,20 @@ class WristRig : MonoBehaviour
                     .OrderByDescending(r => r.sharedMaterials.Count(m => m != null && WatchWords.Any(x => m.name.ToLowerInvariant().Contains(x))))
                     .ThenBy(r => r.sharedMaterials.Count(m => m == null || m.name.StartsWith("Default-Material") || !m.HasProperty("_MainTex") || m.GetTexture("_MainTex") == null))   // USEC Special Ops: a 2nd renderer of the same mesh with only Unity's white Default-Material (user 2026-10-27: white beads)
                     .FirstOrDefault()?.sharedMaterials;
+            // 1.2.1 (user log 2026-10-30: USEC Special Ops beads drawn with Default-Material/Standard): what was found has only Unity's
+            // untextured placeholder (a MeshRenderer copy of the mesh is found first) -> the bundle's textured, non-watch skinned material
+            if (mats != null && prefab != null && mats.All(m => m == null || m.name.StartsWith("Default-Material") || !m.HasProperty("_MainTex") || m.GetTexture("_MainTex") == null))
+            {
+                var alt = prefab.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                    .OrderByDescending(r => r.sharedMesh != null && r.sharedMesh.name == meshName)
+                    .Select(r => r.sharedMaterials).Where(ms => ms.Length > 0 && ms.All(m => m != null && !m.name.StartsWith("Default-Material") && m.HasProperty("_MainTex") && m.GetTexture("_MainTex") != null && !WatchWords.Any(x => m.name.ToLowerInvariant().Contains(x))))
+                    .FirstOrDefault();
+                Plugin.Log.LogInfo($"[WristAccessories] material for {meshName}: only untextured ({string.Join(", ", mats.Select(m => m != null ? m.name : "null"))}) - {(alt != null ? "using the bundle's textured " + string.Join(", ", alt.Select(m => m.name)) : "no textured material in the bundle")}");
+                if (alt != null) mats = alt;
+            }
             if (mats == null && prefab != null)                     // an item whose mesh lives in another bundle (ISB chess tags): its own renderer's material
                 mats = prefab.GetComponentsInChildren<MeshRenderer>(true).FirstOrDefault(r => r.sharedMaterials.Length > 0 && r.name.IndexOf("SHADOW", StringComparison.OrdinalIgnoreCase) < 0)?.sharedMaterials;
-            Plugin.Log.LogInfo($"[WristAccessories] material for {meshName} ({bundle}): {(mats == null ? "NOT FOUND (prefab " + (prefab != null) + ")" : string.Join(", ", mats.Select(m => m != null ? m.name + "/" + m.shader.name : "null")))}");
+            Plugin.Log.LogInfo($"[WristAccessories] material for {meshName} ({bundle}): {(mats == null ? "NOT FOUND (prefab " + (prefab != null) + ")" : string.Join(", ", mats.Select(m => m != null ? m.name + "/" + m.shader.name + " tex " + (m.HasProperty("_MainTex") && m.GetTexture("_MainTex") != null ? m.GetTexture("_MainTex").name : "NONE") : "null")))}{(prefab != null ? $" (renderers of this mesh: {prefab.GetComponentsInChildren<SkinnedMeshRenderer>(true).Count(r => r.sharedMesh != null && r.sharedMesh.name == meshName)})" : "")}");   // 1.2.1: texture names, for the Special Ops "no textures" reports
         }
         catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] material {meshName}: {e.Message}"); }
         if (mats != null) MatCache[k] = (null, mats);                 // a failed lookup (bundle not loaded yet) is retried next time

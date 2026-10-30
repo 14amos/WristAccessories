@@ -15,8 +15,8 @@ namespace WristAccessories;
 static class Presets
 {
     static string FilePath => Path.Combine(BepInEx.Paths.ConfigPath, "com.amos.wristaccessories.presets.json");
-    static ConfigEntry<string>[] Wrist => new[] { Plugin.LeftWrist, Plugin.RightWrist, Plugin.Watch, Plugin.WatchFace, Plugin.WatchWorn, Plugin.WatchWrist, Plugin.RingHand, Plugin.ItemAngles, Plugin.ItemSlides, Plugin.DogTagPicks, Plugin.DogTagFlips };
-    static ConfigEntry<string>[] Hands => new[] { Plugin.Handwear, Plugin.TattooSizes };
+    static ConfigEntry<string>[] Wrist => new[] { Plugin.LeftWrist, Plugin.RightWrist, Plugin.Watch, Plugin.WatchFace, Plugin.WatchWorn, Plugin.WatchWrist, Plugin.ItemAngles, Plugin.ItemSlides, Plugin.DogTagPicks, Plugin.DogTagFlips };
+    static ConfigEntry<string>[] Hands => new[] { Plugin.Handwear, Plugin.TattooSizes, Plugin.Rings };   // + finger rings (1.2.1)
     internal static ConfigEntry<string>[] All => Wrist.Concat(Hands).Concat(new[] { Plugin.Shoes }).ToArray();
     static string Key(ConfigEntry<string> e) => e.Definition.Key;
     public static string Last = "";
@@ -48,6 +48,8 @@ static class Presets
     {
         var o = Read(); if (!(o[name] is JObject p)) { Plugin.Log.LogWarning($"[WristAccessories] presets: no preset \"{name}\""); return; }
         string mode = Plugin.PresetLoads.Value; var set = mode == "wrist" ? Wrist : mode == "hands" ? Hands : mode == "clothing" ? new ConfigEntry<string>[0] : All; int n = 0;
+        var oldRing = (string)p["Gold skull ring"];                     // a preset saved before 1.3.0: its skull ring onto the FINGERS tab
+        if (p["Rings"] == null && (oldRing == "left" || oldRing == "right")) p["Rings"] = (oldRing == "left" ? "L4" : "R4") + "=fring_skullring";
         foreach (var e in set) if (p[Key(e)] != null) { var v = (string)p[Key(e)]; if (e.Value != v) { e.Value = v; n++; } }
         if (mode == "all" || mode == "clothing")
             foreach (var (k, up) in new[] { ("Upper", true), ("Lower", false) })
@@ -107,6 +109,43 @@ static class DogTagPresets
     }
 }
 
+// Ring presets (user 2026-10-30: "a fingers tab with ring options, and another preset"): named sets of the 10 finger rings in
+// BepInEx/config/com.amos.wristaccessories.ring-presets.json, on the FINGERS tab - like the dogtag presets
+static class RingPresets
+{
+    static string FilePath => Path.Combine(BepInEx.Paths.ConfigPath, "com.amos.wristaccessories.ring-presets.json");
+    public static string Last = "";
+    static JObject Read()
+    {
+        try { return File.Exists(FilePath) ? JObject.Parse(File.ReadAllText(FilePath)) : new JObject(); }
+        catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] ring presets: {FilePath}: {e.Message}"); return new JObject(); }
+    }
+    static void Write(JObject o)
+    {
+        try { File.WriteAllText(FilePath, o.ToString()); }
+        catch (Exception e) { Plugin.Log.LogError($"[WristAccessories] ring presets: writing {FilePath}: {e.Message}"); }
+    }
+    public static List<string> Names() => Read().Properties().Select(p => p.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+    public static void Save(string name)
+    {
+        name = (name ?? "").Trim(); if (name.Length == 0) return;
+        var o = Read(); o[name] = new JObject { ["Rings"] = Plugin.Rings.Value ?? "" }; Write(o); Last = name;
+        Plugin.Log.LogInfo($"[WristAccessories] ring presets: saved \"{name}\" ({Plugin.Rings.Value})");
+    }
+    public static void Load(string name)
+    {
+        if (!(Read()[name] is JObject p)) { Plugin.Log.LogWarning($"[WristAccessories] ring presets: no preset \"{name}\""); return; }
+        Plugin.Rings.Value = (string)p["Rings"] ?? ""; Last = name;
+        Plugin.Log.LogInfo($"[WristAccessories] ring presets: loaded \"{name}\" ({Plugin.Rings.Value})");
+    }
+    public static void Delete(string name)
+    {
+        name = (name ?? "").Trim(); var o = Read(); if (o[name] == null) return;
+        o.Remove(name); Write(o); if (Last == name) Last = "";
+        Plugin.Log.LogInfo($"[WristAccessories] ring presets: deleted \"{name}\"");
+    }
+}
+
 // Picks per profile (1.2.0, player 2026-10-29: "Wardrobe equips persist across the profiles, just created a testing profile and it
 // already had my wardrobe stuff from my main save"): the WARDROBE picks (the same settings a preset holds) are kept per game
 // profile in BepInEx/config/com.amos.wristaccessories.profiles.json {profile id: {setting: value}}. The settings themselves stay
@@ -147,7 +186,15 @@ static class ProfilePicks
         var o = Read();
         if (o[id] is JObject p)
         {
-            int n = Apply(e => p[e.Definition.Key] != null ? (string)p[e.Definition.Key] : (string)e.DefaultValue);
+            // picks stored by 1.2.0: the skull ring was "Gold skull ring" = left / right and there was no "Rings" -> the ring on that
+            // hand's ring finger (else the update would drop it); a setting the stored picks lack keeps what it has (not its default)
+            var old = (string)p["Gold skull ring"];
+            if (p["Rings"] == null && (old == "left" || old == "right"))
+            {
+                p["Rings"] = (old == "left" ? "L4" : "R4") + "=fring_skullring";
+                Plugin.Log.LogInfo($"[WristAccessories] profile picks: profile {id} had the skull ring ({old}) - now on the FINGERS tab as {p["Rings"]}");
+            }
+            int n = Apply(e => p[e.Definition.Key] != null ? (string)p[e.Definition.Key] : e.Value);
             Plugin.Log.LogInfo($"[WristAccessories] profile picks: profile {id}{(was != null ? $" (was {was})" : "")} - its own picks put on, {n} settings changed");
         }
         else if (!o.Properties().Any())
