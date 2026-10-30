@@ -32,7 +32,8 @@ character screen.
 - **Options** (with a tooltip on each): WATCH ON (left / right / both), WATCH FACE (back or inner wrist), ADJUST + ANGLE +
   SLIDE (turn or move any worn item), STRAIGHTEN BRACELETS, SKIN SHADE, MATCH SKIN TONE, ON YOUR SCAV, WATCHES IN WRIST
   SLOTS (more than one watch per arm), EVERY SHOE (also the shoes only bots wear: zombies, bosses, scavs, guards),
-  CLEAN SKIN UNDER WATCH.
+  CLEAN SKIN UNDER WATCH, SAME ON BOTH HANDS (a left or right hand also puts on the same outfit's other hand), QUICK UNEQUIP
+  (middle or right click a tile to take that item off), PICKS PER PROFILE (each SPT profile keeps its own picks).
 - Every setting is also in F12 (BepInEx Configuration Manager) -> WristAccessories.
 
 ## Pictures

@@ -116,6 +116,9 @@ static class AccessoriesTab
         l.Add(new Slot { Group = "N", Caption = "SLIDE", Tip = "Moves the item picked in ADJUST along your arm, 2 mm per click: + toward the hand, - toward the elbow. The items after it move with it.", Get = () => $"{SlideOf(AngleItem()):0}", Set = v => SetSlide(AngleItem(), float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)), Choices = () => new List<(string, string)>() });
         { var o = OnOff("STRAIGHTEN BRACELETS", Plugin.Straighten); o.Tip = "Bracelets taken from other outfits go straight round your wrist and close properly, instead of keeping the tilt they had on their original outfit."; l.Add(o); }
         l.Add(new Slot { Group = "N", Caption = "SKIN SHADE", Tip = "Makes the skin of hands and fingerless gloves from other outfits lighter (+) or darker (-), 5% per click, if the automatic match doesn't quite fit your arm.", Get = () => $"{Plugin.SkinShade.Value:0}", Set = v => Plugin.SkinShade.Value = Mathf.Clamp(float.Parse(v, System.Globalization.CultureInfo.InvariantCulture), -50f, 50f), Choices = () => new List<(string, string)>() });
+        { var o = OnOff("SAME ON BOTH HANDS", Plugin.HandsAsSet); o.Tip = "Pick gloves (or another outfit's hand) for one hand and the other hand gets them too. Off: each hand is picked on its own."; l.Add(o); }
+        l.Add(new Slot { Group = "O", Caption = "QUICK UNEQUIP", Tip = "Click a tile with this mouse button to take off what it holds (back to your own, or none) - no scrolling back up the list.", Choices = () => new List<(string, string)> { ("Middle mouse", "middle"), ("Right mouse", "right"), ("Off", "off") }, Get = () => Plugin.QuickUnequip.Value, Set = v => Plugin.QuickUnequip.Value = v });
+        { var o = OnOff("PICKS PER PROFILE", Plugin.PerProfile); o.Tip = "Every game profile keeps its own picks here. Off: the same picks on every profile."; l.Add(o); }
         { var o = OnOff("MATCH SKIN TONE", Plugin.MatchSkinTone); o.Tip = "Hands and fingerless gloves from other outfits get your own skin tone, so they don't look like someone else's hand at the wrist."; l.Add(o); }
         { var o = OnOff("ON YOUR SCAV", Plugin.OnScav); o.Tip = "Off: your scav wears nothing from this mod (no bracelets, watch, ring or handwear) and keeps the outfit the game gave it."; l.Add(o); }
         { var o = OnOff("WATCHES IN WRIST SLOTS", Plugin.WatchesInSlots); o.Tip = "Lets you put watches in the LEFT and RIGHT wrist slots too, as many as you like. For when you wanna be the timekeeper."; l.Add(o); }
@@ -177,7 +180,22 @@ static class AccessoriesTab
         return l;
     }
     static string HandOf(string side) => HW().FirstOrDefault(n => HandWear.Items[n].kind == "hand" && HandWear.Items[n].side == side) ?? "";
-    static void SetHand(string side, string v) { var l = HW().Where(n => !(HandWear.Items[n].kind == "hand" && HandWear.Items[n].side == side)).ToList(); if (!string.IsNullOrEmpty(v)) l.Add(v); SaveHW(l); }
+    static void SetHand(string side, string v)
+    {
+        var sides = new List<(string side, string v)> { (side, v) };
+        // SAME ON BOTH HANDS (1.2.0, player: "Equip gloves/hands as a set"): the same outfit's other hand (name ends _L / _R) goes on too,
+        // "your own" on one side = your own on both
+        if (Plugin.HandsAsSet.Value)
+        {
+            string other = side == "L" ? "R" : "L", ov = "";
+            if (!string.IsNullOrEmpty(v) && v.EndsWith("_" + side)) { var c = v.Substring(0, v.Length - 1) + other; if (HandWear.Items.TryGetValue(c, out var it) && it.kind == "hand" && it.side == other && Bundles.Has(it.bundle)) ov = c; else ov = null; }
+            if (ov != null) { sides.Add((other, ov)); Plugin.Log.LogInfo($"[WristAccessories] SAME ON BOTH HANDS: {(side == "L" ? "right" : "left")} hand '{ov}' with '{v}'"); }
+            else Plugin.Log.LogInfo($"[WristAccessories] SAME ON BOTH HANDS: '{v}' has no other hand - {(side == "L" ? "right" : "left")} hand left as it is");
+        }
+        var l = HW().Where(n => !(HandWear.Items[n].kind == "hand" && sides.Any(x => x.side == HandWear.Items[n].side))).ToList();
+        foreach (var x in sides) if (!string.IsNullOrEmpty(x.v)) l.Add(x.v);
+        SaveHW(l);
+    }
     static List<(string, string)> PieceChoices()
     {
         var l = new List<(string, string)> { ("None", "") };
@@ -967,7 +985,7 @@ static class AccessoriesTab
 
         public void CloseList() { if (_list != null) Destroy(_list); _list = null; }
 
-        void Pick(Slot s, string v)
+        public void Pick(Slot s, string v)
         {
             if (s.Get() == v) return;
             Plugin.Log.LogInfo($"[WristAccessories] ACCESSORIES tab: {s.Caption} picked '{v}' (was '{s.Get()}')");
@@ -1110,6 +1128,7 @@ static class AccessoriesTab
             var bi = bg.GetComponent<Image>(); bi.sprite = Host.S("slot_empty_fill"); bi.type = Image.Type.Tiled; bi.color = bi.sprite != null ? Color.white : new Color(0.06f, 0.065f, 0.07f, 0.95f);
             var btn = bg.GetComponent<Button>(); var cb = btn.colors; cb.highlightedColor = new Color(1.35f, 1.35f, 1.3f, 1); cb.pressedColor = new Color(1.6f, 1.6f, 1.5f, 1); btn.colors = cb;
             btn.onClick.AddListener(() => h.OpenList(_s, r));
+            QuickUnequipOn(h, _s, bg);
             _pic = Host.Pic(r, null, new Vector2((TileWidth - pic) / 2, -(BodyH - pic) / 2), pic);
             _name = h.Text(r, "", 12, new Color(0.86f, 0.85f, 0.78f), TextAlignmentOptions.Center); _name.enableWordWrapping = true;
             _name.rectTransform.anchorMin = Vector2.zero; _name.rectTransform.anchorMax = Vector2.one; _name.rectTransform.offsetMin = new Vector2(6, 6); _name.rectTransform.offsetMax = new Vector2(-6, -6);
@@ -1118,7 +1137,7 @@ static class AccessoriesTab
             if (Host.S("slot_border_current") != null)                          // hover: the GEAR screen's selected-slot border
             {
                 var hv = Host.Skin(r, "slot_border_current", Color.white, Image.Type.Sliced); hv.enabled = false;
-                var et = bg.AddComponent<EventTrigger>();
+                var et = bg.GetComponent<EventTrigger>() ?? bg.AddComponent<EventTrigger>();
                 var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter }; enter.callback.AddListener(_ => hv.enabled = true); et.triggers.Add(enter);
                 var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit }; exit.callback.AddListener(_ => hv.enabled = false); et.triggers.Add(exit);
             }
@@ -1136,6 +1155,25 @@ static class AccessoriesTab
             _name.text = tex || empty || _under != null ? (string.IsNullOrEmpty(v) && _s.Caption == "WATCH" ? "OUTFIT'S OWN" : string.IsNullOrEmpty(v) && _s.Caption.EndsWith(" HAND") ? "YOUR OWN" : string.IsNullOrEmpty(v) && _s.Group == "D" ? "SLEEVE'S OWN" : "") : (i >= 0 ? ch[i].Item1 : v);
             _border.color = empty ? new Color(0.40f, 0.40f, 0.38f, 1f) : new Color(0.78f, 0.77f, 0.70f, 1f);
         }
+    }
+
+    // QUICK UNEQUIP (1.2.0, player: "a quick unequip keybind (maybe mmb)"): that mouse button on a tile picks its empty choice -
+    // "" (your own / the outfit's own / the sleeve's own) first, else "none"
+    static void QuickUnequipOn(Host h, Slot s, GameObject go)
+    {
+        var et = go.GetComponent<EventTrigger>() ?? go.AddComponent<EventTrigger>();
+        var e = new EventTrigger.Entry { eventID = EventTriggerType.PointerClick };
+        e.callback.AddListener(d =>
+        {
+            var b = (d as PointerEventData)?.button; var want = Plugin.QuickUnequip.Value;
+            if (b == null || want == "off" || !(want == "middle" && b == PointerEventData.InputButton.Middle || want == "right" && b == PointerEventData.InputButton.Right)) return;
+            var ch = s.Choices(); var empty = ch.Any(c => c.Item2 == "") ? "" : ch.Any(c => c.Item2 == "none") ? "none" : null;
+            if (empty == null) { Plugin.Log.LogInfo($"[WristAccessories] QUICK UNEQUIP: {s.Caption} has no empty choice"); return; }
+            if (s.Get() == empty) return;
+            Plugin.Log.LogInfo($"[WristAccessories] QUICK UNEQUIP ({want} mouse): {s.Caption} '{s.Get()}' -> '{empty}'");
+            h.CloseList(); h.Pick(s, empty);
+        });
+        et.triggers.Add(e);
     }
 
     class Dropdown : IBox

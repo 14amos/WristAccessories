@@ -46,8 +46,14 @@ static class Fallback
         return _mat;
     }
 
-    /// <summary>The materials with every bad one replaced by the fallback; count = how many slots the renderer needs.</summary>
-    public static Material[] Fix(Material[] mats, int count, string what)
+    // The game's body shader has a stencil value (_StencilType). Body skins get theirs when the game puts them on, our pieces
+    // keep the one their source bundle had - so deferred decals meant for weapons (Camos and Stickers, user 2026-10-29: "camo
+    // is spilling over onto my gloves") were drawn on our gloves. Every piece takes the value of the body it is worn on.
+    static readonly int _StencilType = Shader.PropertyToID("_StencilType");
+
+    /// <summary>The materials with every bad one replaced by the fallback; count = how many slots the renderer needs;
+    /// body = a renderer of the body the piece is worn on (its stencil value is copied), or null.</summary>
+    public static Material[] Fix(Material[] mats, int count, string what, Renderer body)
     {
         var res = new Material[Math.Max(count, 1)]; int bad = 0;
         for (int i = 0; i < res.Length; i++)
@@ -57,6 +63,17 @@ static class Fallback
             res[i] = m;
         }
         if (bad > 0) Plugin.Log.LogWarning($"[WristAccessories] {what}: {bad} of {res.Length} material(s) did not load ({(mats == null || mats.Length == 0 ? "none found" : string.Join(", ", mats.Where(Bad).Select(m => m == null ? "null" : $"{m.name}/{m.shader?.name}")))}) - drawn with the fallback picture");
+        BodyStencil(res, body, what);
         return res;
+    }
+
+    static void BodyStencil(Material[] mats, Renderer body, string what)
+    {
+        var like = body == null ? null : body.sharedMaterials.FirstOrDefault(m => m != null && m.HasProperty(_StencilType));
+        if (like == null) return;
+        float v = like.GetFloat(_StencilType); int changed = 0;
+        foreach (var m in mats)
+            if (m != null && m.HasProperty(_StencilType) && m.GetFloat(_StencilType) != v) { m.SetFloat(_StencilType, v); changed++; }
+        if (changed > 0) Plugin.Log.LogInfo($"[WristAccessories] {what}: stencil {v} like the body ({like.name}) on {changed} material(s)");
     }
 }

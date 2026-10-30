@@ -136,7 +136,27 @@ if __name__ == "__main__" and sys.argv[1] == "scan":
 
 if __name__ == "__main__" and sys.argv[1] == "export":
     hid, S, name, note = sys.argv[2:6]; OUT = sys.argv[6] if len(sys.argv) > 6 else "WORK/wristacc/acc"
-    d = load(hid); fin = ink_of(d, S); keep = [(si, A[k]) for si, A, ink, k, _ in fin if k.any()]
+    d = load(hid)
+    if os.environ.get("UVBOX"):
+        # 2026-10-29 (sheet: Old Guard / Scorpion tattoos missing): the island skin test fails on arms mostly covered in ink (Scorpion)
+        # and lets tan gloves through (Old Guard), so the bare-arm patch is picked by hand as UV boxes "u0,v0,u1,v1;..." (from the
+        # texture), that side's forearm/hand triangles whose UV centre is inside one
+        boxes = [[float(x) for x in b.split(",")] for b in os.environ["UVBOX"].split(";")]
+        names = d["names"]; top = d["bi"][np.arange(len(d["bi"])), d["bw"].argmax(1)]
+        arm = np.array([f"Human{S}" in names[x] and any(k in names[x] for k in ("Forearm", "Palm", "Digit")) for x in top])
+        keep = []
+        for si, T in enumerate(d["subs"]):
+            mn = d["matnames"][si].lower() if si < len(d["matnames"]) else ""
+            if any(w in mn for w in W): continue                 # watch materials share the UV space
+            A = T[arm[T].all(1)]
+            if not len(A): continue
+            c = d["UV"][A].mean(1) % 1.0
+            m = np.zeros(len(A), bool)
+            for u0, v0, u1, v1 in boxes: m |= (c[:, 0] >= u0) & (c[:, 0] <= u1) & (c[:, 1] >= v0) & (c[:, 1] <= v1)
+            if m.any(): keep.append((si, A[m]))
+        if not keep: raise SystemExit(f"{name}: no {S} triangles in UVBOX")
+    else:
+        fin = ink_of(d, S); keep = [(si, A[k]) for si, A, ink, k, _ in fin if k.any()]
     P, N, UV, Tg, bi, bw, mt, names = d["P"], d["N"], d["UV"], d["Tg"], d["bi"], d["bw"], d["mt"], d["names"]
     used = np.unique(np.concatenate([t.ravel() for _, t in keep])); remap = -np.ones(len(P), int); remap[used] = np.arange(len(used))
     ub = np.unique(bi[used][bw[used] > 0]); bmap = {int(b): i for i, b in enumerate(ub)}

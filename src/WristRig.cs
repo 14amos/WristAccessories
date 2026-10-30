@@ -429,7 +429,7 @@ class WristRig : MonoBehaviour
                         if (acc.texture != null && mats != null && b.bundle == acc.bundle) mats = mats.Select(m => Variant(m, acc.texture, acc.accDir)).ToArray();   // BD / ISB patches (the sleeve itself, not the dogtags on it)
                         mr.sharedMaterials = Fallback.Fix(mats == null || mats.Length == 0 ? null
                             : b.mat >= 0 ? new[] { mats[Math.Min(b.mat, mats.Length - 1)] }                       // one submesh of a source outfit's mesh
-                            : Enumerable.Range(0, b.tris.Length).Select(i => mats[Math.Min(i, mats.Length - 1)]).ToArray(), b.mat >= 0 ? 1 : b.tris.Length, $"{acc.name} ({b.mesh})");
+                            : Enumerable.Range(0, b.tris.Length).Select(i => mats[Math.Min(i, mats.Length - 1)]).ToArray(), b.mat >= 0 ? 1 : b.tris.Length, $"{acc.name} ({b.mesh})", hands?.GetRenderers().FirstOrDefault());
                         mr.shadowCastingMode = ShadowCastingMode.Off;
                         if (b.swing != null && b.swing.Length == 2) { TagSwing.Attach(child, mesh, b, o); swings++; }   // dogtags hang from their ring
                         parts++;

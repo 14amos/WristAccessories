@@ -24,7 +24,7 @@ namespace WristAccessories;
 // postfix there swaps in the accessory picked in F12. Fit on hands it wasn't made for: the accessory's placement is
 // taken relative to the wrist frame of the hands it ships with and re-applied to the worn hands' wrist frame
 // (wrist_frames.json, measured offline from every hands mesh in LForearm3 bone space), scaled by the wrist radius ratio.
-[BepInPlugin("com.amos.wristaccessories", "WristAccessories", "1.1.0")]
+[BepInPlugin("com.amos.wristaccessories", "WristAccessories", "1.2.0")]
 [BepInDependency("com.manimal.watchanims", BepInDependency.DependencyFlags.SoftDependency)]
 public class Plugin : BaseUnityPlugin
 {
@@ -33,7 +33,8 @@ public class Plugin : BaseUnityPlugin
     internal static ConfigEntry<string> Accessory;   // "" = outfit default, "none", or a watch prefab path
     internal static ConfigEntry<string> TattooSizes, PresetLoads, LeftWrist, RightWrist, RingHand, Watch, WatchFace, WatchWrist, ItemAngles, Handwear, ItemSlides, Shoes, DogTagPicks, DogTagFlips, WatchWorn;
     internal static ConfigEntry<float> SleeveFit, PhysicsStrength, InnerAngle;
-    internal static ConfigEntry<bool> SeamBlend, BraceletPhysicsOn, CleanWatchShadow, Straighten, OnScav, MatchSkinTone, WatchesInSlots, EveryShoe, DoubleSided;
+    internal static ConfigEntry<bool> SeamBlend, BraceletPhysicsOn, CleanWatchShadow, Straighten, OnScav, MatchSkinTone, WatchesInSlots, EveryShoe, DoubleSided, HandsAsSet, PerProfile;
+    internal static ConfigEntry<string> QuickUnequip;
     internal static ConfigEntry<float> SkinShade;
     internal static ConfigEntry<int> LooseSize;   // Watch: "" = the outfit's own, "none", or a watch_* layout   // fitted accessories (WristFit): names from wrist toward elbow
     static string _dir, _nudgePath;
@@ -93,6 +94,10 @@ public class Plugin : BaseUnityPlugin
         LeftWrist = Config.Bind("2. Fitted accessories", "Left wrist", "", "Game items worn on the left forearm, from the wrist toward the elbow, comma-separated: " +
             "rolex, chainlet, chain_gold, prokill, dogtag, paracord, amulet. Fitted to the outfit's sleeve (no clipping), first person only.");
         RightWrist = Config.Bind("2. Fitted accessories", "Right wrist", "", "Same for the right forearm.");
+        // 1.2.0 (player requests 2026-10-29): gloves / hands picked as a pair, a quick unequip click, picks kept per profile
+        HandsAsSet = Config.Bind("2. Fitted accessories", "Same on both hands", true, "Gloves or another outfit's hand picked for one hand go on the other hand too (off: each hand picked on its own)");
+        QuickUnequip = Config.Bind("2. Fitted accessories", "Quick unequip click", "middle", new ConfigDescription("Clicking a WARDROBE tile with this mouse button takes off what it holds (back to your own / none)", new AcceptableValueList<string>("middle", "right", "off")));
+        PerProfile = Config.Bind("2. Fitted accessories", "Picks per profile", true, "Every game profile keeps its own WARDROBE picks (off: one set of picks for every profile, as before 1.2.0)");
         RingHand = Config.Bind("2. Fitted accessories", "Gold skull ring", "none", new ConfigDescription("Ring finger of which hand", new AcceptableValueList<string>("none", "left", "right")));
         // 1.1.0 test builds kept the skull ring as a finger ring (setting "Rings", hands view - removed, user 2026-10-27): back to RING
         var oldRings = Config.Bind("2. Fitted accessories", "Rings", "", "(1.1.0 test builds only, not used)");
@@ -118,6 +123,7 @@ public class Plugin : BaseUnityPlugin
     {
         if (_reapplyAt > 0 && Time.unscaledTime >= _reapplyAt) { _reapplyAt = -1; _ = Reapply(); }
         HandWear.FlushTattooSize();
+        ProfilePicks.Tick();
         if (_saveAt > 0 && Time.unscaledTime >= _saveAt) { _saveAt = -1; try { File.WriteAllText(_nudgePath, JsonConvert.SerializeObject(Nudges, Formatting.Indented)); } catch (Exception e) { Log.LogError("[WristAccessories] save: " + e.Message); } }
     }
 

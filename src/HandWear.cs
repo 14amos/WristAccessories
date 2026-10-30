@@ -17,7 +17,7 @@ static partial class HandWear
 {
     public class Item
     {
-        public string name, note, kind, side, bundle, mesh, dir; public string[] bones; public Matrix4x4[] bind; public int n; public Color? skin; public int fit; public bool rare; public float[] seamD0; public bool noTone, press;
+        public string name, note, kind, side, bundle, mesh, dir; public string[] bones; public Matrix4x4[] bind; public int n; public Color? skin; public int fit; public bool rare; public bool inkAll; public float[] seamD0; public bool noTone, press;
         public Vector3[] pos, nrm; public Vector4[] tan; public Vector2[] uv; public BoneWeight[] bw; public List<(string mat, int sub, int[] tris)> subs;
     }
     public static readonly Dictionary<string, Item> Items = new Dictionary<string, Item>();
@@ -61,7 +61,7 @@ static partial class HandWear
             {
                 var j = JObject.Parse(File.ReadAllText(f)); var it = new Item { name = (string)j["name"], note = (string)j["note"], kind = (string)j["kind"], side = (string)j["side"], bundle = BundleKey((string)j["bundle"]), mesh = (string)j["mesh"], dir = accDir, n = (int)j["n"] };
                 it.fit = (int?)j["fit"] ?? 0; it.rare = (bool?)j["rare"] ?? false;
-                it.noTone = (bool?)j["no_tone"] ?? false; it.press = ((bool?)j["press"] ?? false) || it.kind == "tattoo";   // every tattoo pressed onto the hand / arm actually drawn (1.0.5)      // a fabric glove the skin test can't tell from skin: its colours stay
+                it.noTone = (bool?)j["no_tone"] ?? false; it.inkAll = (bool?)j["ink_all"] ?? false; it.press = ((bool?)j["press"] ?? false) || it.kind == "tattoo";   // every tattoo pressed onto the hand / arm actually drawn (1.0.5)      // a fabric glove the skin test can't tell from skin: its colours stay
                 if (j["seam_d0"] is JArray sd && sd.Count == 12) it.seamD0 = sd.Select(x => (float)x).ToArray();
                 if (j["skin"] is JArray sk && sk.Count == 3) it.skin = new Color((float)sk[0], (float)sk[1], (float)sk[2]);
                 it.bones = j["bones"].ToObject<string[]>();
@@ -169,7 +169,7 @@ static partial class HandWear
                 r.rootBone = smr.rootBone; r.sharedMesh = mesh; r.updateWhenOffscreen = true; r.shadowCastingMode = smr.shadowCastingMode;
                 var src = mats(it.bundle, it.mesh);
                 r.sharedMaterials = it.subs.Select(s => src != null && src.Length > 0 ? src[Math.Min(s.sub, src.Length - 1)] : null).ToArray();
-                if (it.kind == "tattoo") r.sharedMaterials = r.sharedMaterials.Select(m => InkMaterial(m, it.name, who)).ToArray();   // only the ink shows
+                if (it.kind == "tattoo") r.sharedMaterials = r.sharedMaterials.Select(m => InkMaterial(m, it.name, who, it.inkAll)).ToArray();   // only the ink shows
                 else if (Plugin.MatchSkinTone.Value && !it.noTone && (own != null || vw != null))
                 {
                     float sh = 1f + Plugin.SkinShade.Value / 100f; var target = own == null ? Color.clear : new Color(Mathf.Clamp01(own.Value.r * sh), Mathf.Clamp01(own.Value.g * sh), Mathf.Clamp01(own.Value.b * sh));
@@ -180,7 +180,7 @@ static partial class HandWear
                         return t ?? (own != null ? Toned(m, target, it, who) : m);
                     }).ToArray();
                 }
-                r.sharedMaterials = Fallback.Fix(r.sharedMaterials, it.subs.Count, $"handwear {it.name}");
+                r.sharedMaterials = Fallback.Fix(r.sharedMaterials, it.subs.Count, $"handwear {it.name}", smr);
                 objs.Add(go); if (it.kind == "hand") built[it.side] = r;
                 var chk = go.AddComponent<Check>(); chk.Who = who; chk.Name = it.name; chk.Palm = byName.TryGetValue("Base Human" + it.side + "Palm", out var pb) ? pb : null;
                 Plugin.Log.LogInfo($"[WristAccessories] handwear ({who}): {it.name} ({it.kind}, {it.side}) {it.n} verts on {it.bones.Length} bones{(missing > 0 ? $", {missing} bones not found" : "")}, materials {(src == null ? "NOT FOUND" : string.Join("/", r.sharedMaterials.Select(m => m != null ? m.name : "null")))}");
@@ -246,7 +246,7 @@ static partial class HandWear
                 r.bones = it.bones.Select(n => { if (byName.TryGetValue(n, out var t)) return t; missing++; return smr.rootBone; }).ToArray();
                 r.rootBone = smr.rootBone; r.sharedMesh = mesh; r.updateWhenOffscreen = true; r.shadowCastingMode = smr.shadowCastingMode;
                 var src = mats(it.bundle, it.mesh);
-                r.sharedMaterials = Fallback.Fix(it.subs.Select(s => src != null && src.Length > 0 ? src[Math.Min(s.sub, src.Length - 1)] : null).ToArray(), it.subs.Count, $"shoes {it.name}");
+                r.sharedMaterials = Fallback.Fix(it.subs.Select(s => src != null && src.Length > 0 ? src[Math.Min(s.sub, src.Length - 1)] : null).ToArray(), it.subs.Count, $"shoes {it.name}", smr);
                 objs.Add(go);
                 var chk = go.AddComponent<Check>(); chk.Who = who; chk.Name = it.name; chk.Ref = "the left foot bone"; chk.Palm = byName.TryGetValue("Base HumanLFoot", out var fb) ? fb : null; chk.MaxSize = 1.0f; chk.MaxAway = 0.6f;
                 Plugin.Log.LogInfo($"[WristAccessories] shoes ({who}): {it.name} ({it.note}) {it.n} verts on {it.bones.Length} bones of {smr.name}{(missing > 0 ? $", {missing} bones not found" : "")}, materials {(src == null ? "NOT FOUND" : string.Join("/", r.sharedMaterials.Select(m => m != null ? m.name : "null")))}");
@@ -469,10 +469,11 @@ static partial class HandWear
     // (IsSkin), Unity's Standard shader in cut-out mode (the game ships it; the beads use it too) - only the ink shows. Built once
     // per source material.
     static readonly Dictionary<int, Material> InkCache = new Dictionary<int, Material>();
-    static Material InkMaterial(Material m, string item, string who)
+    static Material InkMaterial(Material m, string item, string who, bool inkAll)
     {
         if (m == null || !m.HasProperty("_MainTex") || m.GetTexture("_MainTex") == null) return m;
-        if (InkCache.TryGetValue(m.GetInstanceID(), out var c) && c != null) return c;
+        int key = m.GetInstanceID() * 2 + (inkAll ? 1 : 0);
+        if (InkCache.TryGetValue(key, out var c) && c != null) return c;
         var std = Shader.Find("Standard"); if (std == null) { Plugin.Log.LogWarning($"[WristAccessories] tattoos ({who}): no Standard shader - {item} drawn as it is"); return m; }
         var src = m.GetTexture("_MainTex"); Texture2D t = null;
         try
@@ -498,6 +499,10 @@ static partial class HandWear
             {
                 int x = i % w, y = i / w, ci = (y / cs) * gw + x / cs;
                 bool isInk = sC[ci] > 0 && sN[ci] / sC[ci] >= 0.6f && Ls[i] < sL[ci] / Math.Max(1f, sN[ci]) - 8f;
+                // "ink_all" (1.2.0, sheet 2026-10-29: Scorpion's sleeves are nearly all ink, so no window is 60 % skin): every texel that
+                // is not skin-coloured is ink (the item's triangles cover only its bare-arm patch). Skin here is narrower than SkinW
+                // (hue 2-40 deg, saturation 0.15-0.62, value > 0.3) so crimson ink stays ink (checked on its texture in python)
+                if (inkAll && !isInk) { Color.RGBToHSV(px[i], out float ih, out float isat, out float iv); ih *= 360f; isInk = !(ih >= 2f && ih <= 40f && isat >= 0.15f && isat <= 0.62f && iv > 0.3f); }
                 px[i].a = isInk ? (byte)255 : (byte)0; if (isInk) ink++;
             }
             t.SetPixels32(px); t.Apply(true); t.name = src.name + "_WristAccInk"; t.wrapMode = src.wrapMode; UnityEngine.Object.DontDestroyOnLoad(t);
@@ -506,8 +511,8 @@ static partial class HandWear
             c.EnableKeyword("_ALPHATEST_ON"); c.SetFloat("_Cutoff", 0.5f); c.renderQueue = 2450; c.SetFloat("_Glossiness", 0.25f); c.SetFloat("_Metallic", 0f);
             // no _BumpMap: the game's normal maps are packed for its own shaders; under Standard they lit the ink white (SeamTest 2026-10-27)
             c.SetFloat("_Glossiness", 0.1f); c.EnableKeyword("_SPECULARHIGHLIGHTS_OFF"); c.SetFloat("_SpecularHighlights", 0f); c.EnableKeyword("_GLOSSYREFLECTIONS_OFF"); c.SetFloat("_GlossyReflections", 0f);
-            InkCache[m.GetInstanceID()] = c;
-            Plugin.Log.LogInfo($"[WristAccessories] tattoos ({who}): {item} ink {100f * ink / Math.Max(1, px.Length):0}% of {src.name} ({src.width}x{src.height}), Standard cut-out");
+            InkCache[key] = c;
+            Plugin.Log.LogInfo($"[WristAccessories] tattoos ({who}): {item} ink {100f * ink / Math.Max(1, px.Length):0}%{(inkAll ? " (all non-skin)" : "")} of {src.name} ({src.width}x{src.height}), Standard cut-out");
             return c;
         }
         catch (Exception e) { if (t != null) UnityEngine.Object.Destroy(t); Plugin.Log.LogError($"[WristAccessories] tattoos {item}: {e.Message}"); return m; }
